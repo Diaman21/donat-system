@@ -1,6 +1,7 @@
 # Схема БД — donat-system
 
 > Исходник: [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql).
+> Применена в **Neon** (serverless Postgres, EU Central, бесплатный план).
 > Этот документ — человекочитаемое описание для тебя и для будущих сессий Claude.
 
 ## ER-диаграмма
@@ -226,6 +227,15 @@ select ph.imei_last4, ph.label, p.purchased_at, p.amount, p.notes
 
 ## Будущие изменения схемы
 
-См. [`TODO.md`](../TODO.md). Все изменения — через новые миграции
-(`supabase/migrations/0002_xxx.sql` и далее). **Никогда не редактируем
-применённую миграцию.**
+См. [`TODO.md`](../TODO.md). Все структурные изменения схемы — через новые файлы миграций
+(`supabase/migrations/0002_xxx.sql` и далее), применяемые вручную в Neon SQL Editor.
+**Никогда не редактируем уже применённую миграцию.**
+
+## Подключение к БД
+
+| Тип | Когда использовать |
+|---|---|
+| `DATABASE_URL` (pooler) | Бот, Next.js — основное подключение приложения |
+| `DATABASE_URL_DIRECT` (direct) | Drizzle-миграции, DDL-операции |
+
+Connection strings хранятся в `.env` (локально, не в git). Шаблон — `.env.example`.
