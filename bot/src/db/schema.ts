@@ -98,6 +98,7 @@ export const purchases = pgTable('purchases', {
   categoryId: uuid('category_id').notNull(),
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
   result: purchaseResult('result').notNull(),
+  game: text('game'), // игра (напр. «Массив»), опционально — миграция 0002
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -42,3 +42,4 @@ supabase/seed.sql.local
 # ---------- Local tooling ----------
 .cache/
 tmp/
+.claude/

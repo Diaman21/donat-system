@@ -1,18 +1,18 @@
 import { db } from '../db/client';
 import { users } from '../db/schema';
 import type { AppContext } from '../context';
-import { greetingForRole, menuForRole } from './menus';
+import { greeting, mainMenu } from './menus';
 
-// /start — регистрирует пользователя в БД (если новый) и показывает
-// приветствие с ролевым меню. Роль по умолчанию — customer.
+// /start — регистрирует пользователя (если новый, роль customer = «без доступа»)
+// и показывает меню для operator/moderator. customer получает просьбу
+// дождаться выдачи роли модератором.
 export async function handleStart(ctx: AppContext): Promise<void> {
   const from = ctx.from;
-  if (!from) {
-    return;
-  }
+  if (!from) return;
+
+  ctx.session.flow = undefined; // сброс любого незавершённого ввода
 
   let user = ctx.dbUser;
-
   if (!user) {
     const fullName = [from.first_name, from.last_name].filter(Boolean).join(' ');
     const rows = await db
@@ -32,5 +32,21 @@ export async function handleStart(ctx: AppContext): Promise<void> {
     return;
   }
 
-  await ctx.reply(greetingForRole(user), { reply_markup: menuForRole(user.role) });
+  if (user.role === 'customer') {
+    await ctx.reply(
+      'Привет! Доступ пока не выдан.\n' +
+        `Передай модератору свой ID: ${from.id} — он назначит тебе роль оператора.`,
+    );
+    return;
+  }
+
+  await ctx.reply(greeting(user), { reply_markup: mainMenu() });
+}
+
+// Проверка доступа: оператор или модератор. Если нет — сообщает и возвращает false.
+export async function requireOperator(ctx: AppContext): Promise<boolean> {
+  const role = ctx.dbUser?.role;
+  if (role === 'operator' || role === 'moderator') return true;
+  await ctx.reply('Нет доступа. Напиши /start и попроси модератора выдать роль.');
+  return false;
 }

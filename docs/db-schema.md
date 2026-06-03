@@ -161,8 +161,9 @@ erDiagram
 | `order_id` | `uuid` → `orders.id` **nullable** | NULL — это разогревочная покупка |
 | `operator_id` | `uuid` → `users.id` | кто покупал |
 | `category_id` | `uuid` → `purchase_categories.id` | тип закупки |
-| `amount` | `numeric(12,2)` CHECK > 0 | сумма |
+| `amount` | `numeric(12,2)` CHECK > 0 | сумма $ (реально потрачено через Apple Pay) |
 | `result` | `purchase_result` | ✅ `done` / ⚠️ `support` / 💀 `long` |
+| `game` | `text` nullable | игра (напр. «Массив»), опционально — миграция `0002` |
 | `purchased_at` | `timestamptz` | **точное время покупки** (главное для аналитики) |
 | `notes` | `text` | заметки оператора |
 
