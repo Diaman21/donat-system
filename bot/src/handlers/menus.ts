@@ -7,6 +7,8 @@ export const BTN = {
   addPhone: '➕ Телефон',
   phones: '📱 Телефоны',
   stats: '📊 Статистика',
+  recent: '🧾 Последние',
+  delLast: '↩️ Удалить последнюю',
 } as const;
 
 export function greeting(user: User): string {
@@ -24,6 +26,9 @@ export function mainMenu(): Keyboard {
     .text(BTN.phones)
     .row()
     .text(BTN.stats)
+    .text(BTN.recent)
+    .row()
+    .text(BTN.delLast)
     .resized()
     .persistent();
 }

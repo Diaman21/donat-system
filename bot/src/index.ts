@@ -14,6 +14,14 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
+  // Меню команд в Telegram (выпадают при вводе «/»)
+  await bot.api.setMyCommands([
+    { command: 'start', description: 'Меню' },
+    { command: 'stats', description: 'Статистика' },
+    { command: 'help', description: 'Помощь' },
+    { command: 'cancel', description: 'Отменить ввод' },
+  ]);
+
   console.log('Бот запускается...');
   await bot.start({
     onStart: (info) => {

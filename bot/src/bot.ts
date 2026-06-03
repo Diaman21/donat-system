@@ -3,13 +3,10 @@ import { env } from './config';
 import type { AppContext, SessionData } from './context';
 import { loadUser } from './middlewares/auth';
 import { handleStart } from './handlers/start';
+import { handleHelp } from './handlers/help';
+import { handleCancel, CANCEL_CB } from './handlers/common';
 import { BTN } from './handlers/menus';
-import {
-  startAddPhone,
-  onAddPhoneImei,
-  onAddPhoneLabel,
-  listPhones,
-} from './handlers/phones';
+import { startAddPhone, onAddPhoneImei, onAddPhoneLabel, listPhones } from './handlers/phones';
 import {
   startPurchase,
   onPhoneSelected,
@@ -18,7 +15,8 @@ import {
   onResultSelected,
   CB,
 } from './handlers/purchase';
-import { showStats } from './handlers/stats';
+import { showStats, onStatsPeriod, STATS_CB, type StatsPeriod } from './handlers/stats';
+import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent';
 import type { PurchaseResultValue } from './db/schema';
 
 export function createBot(): Bot<AppContext> {
@@ -28,24 +26,42 @@ export function createBot(): Bot<AppContext> {
 
   const bot = new Bot<AppContext>(env.botToken);
 
-  // Сессия (для пошагового ввода) и текущий пользователь из БД
   bot.use(session({ initial: (): SessionData => ({}) }));
   bot.use(loadUser);
 
   // Команды
   bot.command('start', handleStart);
   bot.command('stats', showStats);
+  bot.command('help', handleHelp);
+  bot.command('cancel', handleCancel);
 
   // Кнопки главного меню
   bot.hears(BTN.purchase, startPurchase);
   bot.hears(BTN.addPhone, startAddPhone);
   bot.hears(BTN.phones, listPhones);
   bot.hears(BTN.stats, showStats);
+  bot.hears(BTN.recent, showRecent);
+  bot.hears(BTN.delLast, startDeleteLast);
 
   // Inline-callback'и
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
     try {
+      if (data === CANCEL_CB) {
+        await ctx.answerCallbackQuery();
+        await handleCancel(ctx);
+        return;
+      }
+      if (data === DELLAST_CB) {
+        await ctx.answerCallbackQuery();
+        await confirmDeleteLast(ctx);
+        return;
+      }
+      if (data.startsWith(STATS_CB)) {
+        await ctx.answerCallbackQuery();
+        await onStatsPeriod(ctx, data.slice(STATS_CB.length) as StatsPeriod);
+        return;
+      }
       if (data.startsWith(CB.phone)) {
         await ctx.answerCallbackQuery();
         await onPhoneSelected(ctx, data.slice(CB.phone.length));
@@ -76,7 +92,7 @@ export function createBot(): Bot<AppContext> {
       case 'purchase_amount':
         return onPurchaseAmount(ctx, ctx.message.text);
       default:
-        await ctx.reply('Не понял. Открой меню командой /start.');
+        await ctx.reply('Не понял. Открой меню: /start или /help.');
     }
   });
 

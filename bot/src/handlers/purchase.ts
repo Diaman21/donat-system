@@ -5,6 +5,7 @@ import { phones, purchases, purchaseCategories, type PurchaseResultValue } from 
 import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
+import { cancelKb, CANCEL_CB } from './common';
 
 // Префиксы callback-данных
 export const CB = {
@@ -33,13 +34,14 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
     const label = `…${p.imeiLast4}${p.label ? ` (${p.label})` : ''}`;
     kb.text(label, `${CB.phone}${p.id}`).row();
   }
+  kb.text('✖️ Отмена', CANCEL_CB);
   await ctx.reply('С какого телефона закупка?', { reply_markup: kb });
 }
 
 // Шаг 1: выбран телефон → спрашиваем игру.
 export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise<void> {
   ctx.session.flow = { kind: 'purchase_game', phoneId };
-  await ctx.reply('В какой игре? (напр. «Массив») или /skip:');
+  await ctx.reply('В какой игре? (напр. «Массив») или /skip:', { reply_markup: cancelKb() });
 }
 
 // Шаг 2: игра (или /skip) → спрашиваем сумму.
@@ -49,7 +51,7 @@ export async function onPurchaseGame(ctx: AppContext, text: string): Promise<voi
 
   const game = text.trim() === '/skip' ? null : text.trim();
   ctx.session.flow = { kind: 'purchase_amount', phoneId: flow.phoneId, game };
-  await ctx.reply('Сколько $ потрачено? (напр. 30):');
+  await ctx.reply('Сколько $ потрачено? (напр. 30):', { reply_markup: cancelKb() });
 }
 
 // Шаг 3: сумма → показываем кнопки результата.
@@ -70,7 +72,9 @@ export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<v
     .row()
     .text(RESULT_LABEL.support, `${CB.result}support`)
     .row()
-    .text(RESULT_LABEL.long, `${CB.result}long`);
+    .text(RESULT_LABEL.long, `${CB.result}long`)
+    .row()
+    .text('✖️ Отмена', CANCEL_CB);
   await ctx.reply(`Сумма $${amount}. Результат?`, { reply_markup: kb });
 }
 
