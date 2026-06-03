@@ -7,9 +7,16 @@ import type { User } from './db/schema';
 export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
-  | { kind: 'purchase_game'; phoneId: string }
-  | { kind: 'purchase_amount'; phoneId: string; game: string | null }
-  | { kind: 'purchase_result'; phoneId: string; game: string | null; amount: string };
+  | { kind: 'purchase_category'; phoneId: string }
+  | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
+  | { kind: 'purchase_amount'; phoneId: string; categoryCode: string; game: string | null }
+  | {
+      kind: 'purchase_result';
+      phoneId: string;
+      categoryCode: string;
+      game: string | null;
+      amount: string;
+    };
 
 export interface SessionData {
   flow?: FlowState;

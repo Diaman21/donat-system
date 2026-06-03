@@ -1,10 +1,15 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client';
 import { phones, purchases } from '../db/schema';
 import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
-import { cancelKb } from './common';
+import { cancelKb, CANCEL_CB } from './common';
+import { buildPostMortem } from './postmortem';
+
+export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
+export const KILLC_CB = 'killc:'; // подтвердить вывод
 
 // «➕ Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
@@ -21,7 +26,6 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     return;
   }
 
-  // Дубль среди активных
   const dup = await db
     .select({ id: phones.id })
     .from(phones)
@@ -29,7 +33,7 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     .limit(1);
   if (dup.length > 0) {
     await ctx.reply(
-      `Телефон …${imei} уже активен. Укажи другие 4 цифры или сначала выведи тот из активных (результат 💀).`,
+      `Телефон …${imei} уже активен. Укажи другие 4 цифры или сначала выведи тот из активных.`,
       { reply_markup: cancelKb() },
     );
     return;
@@ -61,7 +65,7 @@ export async function onAddPhoneLabel(ctx: AppContext, text: string): Promise<vo
   } catch (err) {
     const msg = String(err);
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
-      await ctx.reply('⚠️ Уже 3 активных телефона — лимит. Сначала выведи один (результат 💀).', {
+      await ctx.reply('⚠️ Уже 3 активных телефона — лимит. Сначала выведи один.', {
         reply_markup: mainMenu(),
       });
     } else if (msg.includes('phones_active_imei_unique')) {
@@ -73,7 +77,7 @@ export async function onAddPhoneLabel(ctx: AppContext, text: string): Promise<vo
   }
 }
 
-// «📱 Телефоны» — список активных с накопленной статистикой.
+// «📱 Телефоны» — список активных со статистикой + кнопки вывода.
 export async function listPhones(ctx: AppContext): Promise<void> {
   if (!(await requireOperator(ctx))) return;
 
@@ -91,16 +95,58 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     })
     .from(purchases)
     .groupBy(purchases.phoneId);
-
   const byPhone = new Map(stats.map((s) => [s.phoneId, s]));
 
-  const lines = active.map((p) => {
+  const lines: string[] = [];
+  const kb = new InlineKeyboard();
+  for (const p of active) {
     const s = byPhone.get(p.id);
     const cnt = s?.cnt ?? 0;
     const total = s?.total ?? '0';
     const label = p.label ? ` «${p.label}»` : '';
-    return `📱 …${p.imeiLast4}${label} — $${total} за ${cnt} покупок`;
-  });
+    lines.push(`📱 …${p.imeiLast4}${label} — $${total} за ${cnt} покупок`);
+    kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`).row();
+  }
 
-  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'));
+  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), { reply_markup: kb });
+}
+
+// Спросить подтверждение ручного вывода телефона.
+export async function onKillAsk(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+  const rows = await db
+    .select({ imei: phones.imeiLast4, label: phones.label, status: phones.status })
+    .from(phones)
+    .where(eq(phones.id, phoneId))
+    .limit(1);
+  const ph = rows[0];
+  if (!ph || ph.status !== 'active') {
+    await ctx.reply('Телефон уже не активен.', { reply_markup: mainMenu() });
+    return;
+  }
+  const kb = new InlineKeyboard()
+    .text('✅ Вывести', `${KILLC_CB}${phoneId}`)
+    .text('✖️ Отмена', CANCEL_CB);
+  await ctx.reply(
+    `Вывести телефон …${ph.imei}${ph.label ? ` («${ph.label}»)` : ''} из активных?`,
+    { reply_markup: kb },
+  );
+}
+
+// Подтверждённый ручной вывод: помечаем dead (без покупки) + показываем итог.
+export async function onKillConfirm(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+  const upd = await db
+    .update(phones)
+    .set({ status: 'dead', diedAt: new Date() })
+    .where(and(eq(phones.id, phoneId), eq(phones.status, 'active')))
+    .returning({ imei: phones.imeiLast4 });
+  if (upd.length === 0) {
+    await ctx.reply('Телефон уже не активен.', { reply_markup: mainMenu() });
+    return;
+  }
+  const pm = await buildPostMortem(phoneId);
+  await ctx.reply(`☠️ Телефон …${upd[0]!.imei} выведен из активных.\n\n${pm}`, {
+    reply_markup: mainMenu(),
+  });
 }

@@ -6,10 +6,20 @@ import { handleStart } from './handlers/start';
 import { handleHelp } from './handlers/help';
 import { handleCancel, CANCEL_CB } from './handlers/common';
 import { BTN } from './handlers/menus';
-import { startAddPhone, onAddPhoneImei, onAddPhoneLabel, listPhones } from './handlers/phones';
+import {
+  startAddPhone,
+  onAddPhoneImei,
+  onAddPhoneLabel,
+  listPhones,
+  onKillAsk,
+  onKillConfirm,
+  KILL_CB,
+  KILLC_CB,
+} from './handlers/phones';
 import {
   startPurchase,
   onPhoneSelected,
+  onCategorySelected,
   onPurchaseGame,
   onPurchaseAmount,
   onResultSelected,
@@ -62,9 +72,25 @@ export function createBot(): Bot<AppContext> {
         await onStatsPeriod(ctx, data.slice(STATS_CB.length) as StatsPeriod);
         return;
       }
+      // вывод телефона: killc: проверяем раньше kill:
+      if (data.startsWith(KILLC_CB)) {
+        await ctx.answerCallbackQuery();
+        await onKillConfirm(ctx, data.slice(KILLC_CB.length));
+        return;
+      }
+      if (data.startsWith(KILL_CB)) {
+        await ctx.answerCallbackQuery();
+        await onKillAsk(ctx, data.slice(KILL_CB.length));
+        return;
+      }
       if (data.startsWith(CB.phone)) {
         await ctx.answerCallbackQuery();
         await onPhoneSelected(ctx, data.slice(CB.phone.length));
+        return;
+      }
+      if (data.startsWith(CB.cat)) {
+        await ctx.answerCallbackQuery();
+        await onCategorySelected(ctx, data.slice(CB.cat.length));
         return;
       }
       if (data.startsWith(CB.result)) {

@@ -6,10 +6,12 @@ import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
 import { cancelKb, CANCEL_CB } from './common';
+import { buildPostMortem } from './postmortem';
 
 // Префиксы callback-данных
 export const CB = {
   phone: 'pur:phone:', // + phoneId
+  cat: 'pur:cat:', // + категория (code)
   result: 'pur:res:', // + done|support|long
 } as const;
 
@@ -17,6 +19,11 @@ const RESULT_LABEL: Record<PurchaseResultValue, string> = {
   done: '✅ Выполнено',
   support: '⚠️ Ошибка (саппорт)',
   long: '💀 Телефон умер',
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  game_donate: '🎮 Донат в игре',
+  vk_votes: '🗳 Голоса ВК',
 };
 
 // «➕ Закупка» — шаг 0: выбор телефона (inline-кнопки активных).
@@ -38,35 +45,66 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
   await ctx.reply('С какого телефона закупка?', { reply_markup: kb });
 }
 
-// Шаг 1: выбран телефон → спрашиваем игру.
+// Шаг 1: выбран телефон → выбор категории.
 export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise<void> {
-  ctx.session.flow = { kind: 'purchase_game', phoneId };
+  ctx.session.flow = { kind: 'purchase_category', phoneId };
+  const cats = await db
+    .select({ code: purchaseCategories.code })
+    .from(purchaseCategories)
+    .where(eq(purchaseCategories.isActive, true));
+
+  const kb = new InlineKeyboard();
+  for (const c of cats) {
+    kb.text(CATEGORY_LABEL[c.code] ?? c.code, `${CB.cat}${c.code}`).row();
+  }
+  kb.text('✖️ Отмена', CANCEL_CB);
+  await ctx.reply('Что закупаем?', { reply_markup: kb });
+}
+
+// Шаг 2: выбрана категория → спрашиваем игру.
+export async function onCategorySelected(ctx: AppContext, code: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_category') return;
+  ctx.session.flow = { kind: 'purchase_game', phoneId: flow.phoneId, categoryCode: code };
   await ctx.reply('В какой игре? (напр. «Массив») или /skip:', { reply_markup: cancelKb() });
 }
 
-// Шаг 2: игра (или /skip) → спрашиваем сумму.
+// Шаг 3: игра (или /skip) → спрашиваем сумму.
 export async function onPurchaseGame(ctx: AppContext, text: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_game') return;
 
   const game = text.trim() === '/skip' ? null : text.trim();
-  ctx.session.flow = { kind: 'purchase_amount', phoneId: flow.phoneId, game };
+  ctx.session.flow = {
+    kind: 'purchase_amount',
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game,
+  };
   await ctx.reply('Сколько $ потрачено? (напр. 30):', { reply_markup: cancelKb() });
 }
 
-// Шаг 3: сумма → показываем кнопки результата.
+// Шаг 4: сумма → показываем кнопки результата.
 export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_amount') return;
 
   const n = Number(text.trim().replace(',', '.'));
   if (!Number.isFinite(n) || n <= 0) {
-    await ctx.reply('Нужна сумма числом больше 0 (напр. 30). Попробуй ещё раз:');
+    await ctx.reply('Нужна сумма числом больше 0 (напр. 30). Попробуй ещё раз:', {
+      reply_markup: cancelKb(),
+    });
     return;
   }
   const amount = n.toFixed(2);
 
-  ctx.session.flow = { kind: 'purchase_result', phoneId: flow.phoneId, game: flow.game, amount };
+  ctx.session.flow = {
+    kind: 'purchase_result',
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game: flow.game,
+    amount,
+  };
   const kb = new InlineKeyboard()
     .text(RESULT_LABEL.done, `${CB.result}done`)
     .row()
@@ -78,25 +116,26 @@ export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<v
   await ctx.reply(`Сумма $${amount}. Результат?`, { reply_markup: kb });
 }
 
-// Шаг 4: выбран результат → сохраняем покупку.
+// Шаг 5: выбран результат → сохраняем покупку.
 export async function onResultSelected(ctx: AppContext, result: PurchaseResultValue): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_result') {
-    await ctx.reply('Сессия ввода истекла. Начни заново: «➕ Закупка».', { reply_markup: mainMenu() });
+    await ctx.reply('Сессия ввода истекла. Начни заново: «➕ Закупка».', {
+      reply_markup: mainMenu(),
+    });
     return;
   }
   const user = ctx.dbUser;
   if (!user) return;
 
-  // Категория по умолчанию — game_donate
   const cat = await db
     .select()
     .from(purchaseCategories)
-    .where(eq(purchaseCategories.code, 'game_donate'))
+    .where(eq(purchaseCategories.code, flow.categoryCode))
     .limit(1);
   const category = cat[0];
   if (!category) {
-    await ctx.reply('Не найдена категория game_donate в БД. Сообщи модератору.');
+    await ctx.reply('Не найдена категория в БД. Сообщи модератору.');
     ctx.session.flow = undefined;
     return;
   }
@@ -110,6 +149,7 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     game: flow.game,
   });
 
+  const phoneId = flow.phoneId;
   ctx.session.flow = undefined;
 
   const parts = [
@@ -118,8 +158,10 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     flow.game ? `Игра: ${flow.game}` : null,
   ].filter(Boolean);
 
+  // При 💀 — телефон умер (триггер). Показываем «надгробие».
   if (result === 'long') {
-    parts.push('', '💀 Телефон помечен мёртвым и выведен из активных.');
+    const pm = await buildPostMortem(phoneId);
+    if (pm) parts.push('', pm);
   }
 
   await ctx.reply(parts.join('\n'), { reply_markup: mainMenu() });
