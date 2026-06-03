@@ -6,6 +6,7 @@ export const BTN = {
   purchase: '➕ Закупка',
   addPhone: '➕ Телефон',
   phones: '📱 Телефоны',
+  stats: '📊 Статистика',
 } as const;
 
 export function greeting(user: User): string {
@@ -21,6 +22,8 @@ export function mainMenu(): Keyboard {
     .row()
     .text(BTN.addPhone)
     .text(BTN.phones)
+    .row()
+    .text(BTN.stats)
     .resized()
     .persistent();
 }

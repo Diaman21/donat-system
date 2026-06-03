@@ -18,6 +18,7 @@ import {
   onResultSelected,
   CB,
 } from './handlers/purchase';
+import { showStats } from './handlers/stats';
 import type { PurchaseResultValue } from './db/schema';
 
 export function createBot(): Bot<AppContext> {
@@ -33,11 +34,13 @@ export function createBot(): Bot<AppContext> {
 
   // Команды
   bot.command('start', handleStart);
+  bot.command('stats', showStats);
 
   // Кнопки главного меню
   bot.hears(BTN.purchase, startPurchase);
   bot.hears(BTN.addPhone, startAddPhone);
   bot.hears(BTN.phones, listPhones);
+  bot.hears(BTN.stats, showStats);
 
   // Inline-callback'и
   bot.on('callback_query:data', async (ctx) => {
