@@ -36,6 +36,7 @@ import {
   type StatsPeriod,
 } from './handlers/stats.js';
 import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent.js';
+import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
 export function createBot(): Bot<AppContext> {
@@ -165,8 +166,10 @@ export function createBot(): Bot<AppContext> {
     }
   });
 
-  bot.catch((err) => {
+  bot.catch(async (err) => {
     console.error('Ошибка при обработке апдейта:', err.error);
+    const where = err.ctx?.update?.update_id ? ` (update ${err.ctx.update.update_id})` : '';
+    await notifyModerator(err.ctx.api, `⚠️ Ошибка бота${where}:\n${String(err.error).slice(0, 600)}`);
   });
 
   return bot;
