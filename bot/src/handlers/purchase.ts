@@ -5,7 +5,7 @@ import { phones, purchases, purchaseCategories, type PurchaseResultValue } from 
 import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
-import { cancelKb, CANCEL_CB } from './common';
+import { cancelKb, CANCEL_CB, requirePrivate } from './common';
 import { buildPostMortem } from './postmortem';
 
 // Префиксы callback-данных
@@ -28,6 +28,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 // «➕ Закупка» — шаг 0: выбор телефона (inline-кнопки активных).
 export async function startPurchase(ctx: AppContext): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
 
   const active = await db.select().from(phones).where(eq(phones.status, 'active'));

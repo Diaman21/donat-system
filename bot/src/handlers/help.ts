@@ -1,5 +1,5 @@
 import type { AppContext } from '../context';
-import { mainMenu } from './menus';
+import { menuFor } from './menus';
 
 export async function handleHelp(ctx: AppContext): Promise<void> {
   const text = [
@@ -19,5 +19,5 @@ export async function handleHelp(ctx: AppContext): Promise<void> {
     '💀 = телефон «умер»: больше не активен. ⚠️ = ошибка/саппорт. ✅ = успешно.',
     'Сумма $ — сколько реально потрачено через Apple Pay (главное для анализа).',
   ].join('\n');
-  await ctx.reply(text, { reply_markup: mainMenu() });
+  await ctx.reply(text, { reply_markup: menuFor(ctx) });
 }

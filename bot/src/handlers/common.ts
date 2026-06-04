@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context';
-import { mainMenu } from './menus';
+import { menuFor } from './menus';
 
 export const CANCEL_CB = 'cancel';
 
@@ -14,5 +14,12 @@ export function cancelKb(base?: InlineKeyboard): InlineKeyboard {
 export async function handleCancel(ctx: AppContext): Promise<void> {
   const had = ctx.session.flow !== undefined;
   ctx.session.flow = undefined;
-  await ctx.reply(had ? 'Отменено.' : 'Нечего отменять.', { reply_markup: mainMenu() });
+  await ctx.reply(had ? 'Отменено.' : 'Нечего отменять.', { reply_markup: menuFor(ctx) });
+}
+
+// Действия с вводом/изменением — только в личке (в группе чат общий).
+export async function requirePrivate(ctx: AppContext): Promise<boolean> {
+  if (ctx.chat?.type === 'private') return true;
+  await ctx.reply(`Это делается в личке с ботом: @${ctx.me.username}`);
+  return false;
 }

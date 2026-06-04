@@ -1,7 +1,7 @@
 import { db } from '../db/client';
 import { users } from '../db/schema';
 import type { AppContext } from '../context';
-import { greeting, mainMenu } from './menus';
+import { greeting, menuFor } from './menus';
 
 // /start — регистрирует пользователя (если новый, роль customer = «без доступа»)
 // и показывает меню для operator/moderator. customer получает просьбу
@@ -40,7 +40,7 @@ export async function handleStart(ctx: AppContext): Promise<void> {
     return;
   }
 
-  await ctx.reply(greeting(user), { reply_markup: mainMenu() });
+  await ctx.reply(greeting(user), { reply_markup: menuFor(ctx) });
 }
 
 // Проверка доступа: оператор или модератор. Если нет — сообщает и возвращает false.

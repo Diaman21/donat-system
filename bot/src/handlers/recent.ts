@@ -5,7 +5,7 @@ import { phones, purchases, users, type PurchaseResultValue } from '../db/schema
 import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
-import { CANCEL_CB } from './common';
+import { CANCEL_CB, requirePrivate } from './common';
 
 export const DELLAST_CB = 'dellast:confirm';
 
@@ -55,6 +55,7 @@ export async function showRecent(ctx: AppContext): Promise<void> {
 
 // «↩️ Удалить последнюю» — показать последнюю СВОЮ закупку и спросить подтверждение.
 export async function startDeleteLast(ctx: AppContext): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
   const user = ctx.dbUser;
   if (!user) return;

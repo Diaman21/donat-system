@@ -1,5 +1,6 @@
 import { Keyboard } from 'grammy';
 import type { User } from '../db/schema';
+import type { AppContext } from '../context';
 
 // Метки кнопок главного меню (используются и при отрисовке, и в роутинге).
 export const BTN = {
@@ -31,4 +32,9 @@ export function mainMenu(): Keyboard {
     .text(BTN.delLast)
     .resized()
     .persistent();
+}
+
+// Reply-меню показываем только в личке (в группе оно мешает всем).
+export function menuFor(ctx: AppContext): Keyboard | undefined {
+  return ctx.chat?.type === 'private' ? mainMenu() : undefined;
 }

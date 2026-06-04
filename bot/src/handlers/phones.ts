@@ -5,7 +5,7 @@ import { phones, purchases } from '../db/schema';
 import type { AppContext } from '../context';
 import { mainMenu } from './menus';
 import { requireOperator } from './start';
-import { cancelKb, CANCEL_CB } from './common';
+import { cancelKb, CANCEL_CB, requirePrivate } from './common';
 import { buildPostMortem } from './postmortem';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
@@ -13,6 +13,7 @@ export const KILLC_CB = 'killc:'; // подтвердить вывод
 
 // «➕ Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
   ctx.session.flow = { kind: 'add_phone_imei' };
   await ctx.reply('Введи последние 4 цифры IMEI телефона:', { reply_markup: cancelKb() });
@@ -97,6 +98,9 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     .groupBy(purchases.phoneId);
   const byPhone = new Map(stats.map((s) => [s.phoneId, s]));
 
+  // Кнопки вывода — только в личке (в группе список только для просмотра)
+  const allowKill = ctx.chat?.type === 'private';
+
   const lines: string[] = [];
   const kb = new InlineKeyboard();
   for (const p of active) {
@@ -105,14 +109,17 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     const total = s?.total ?? '0';
     const label = p.label ? ` «${p.label}»` : '';
     lines.push(`📱 …${p.imeiLast4}${label} — $${total} за ${cnt} покупок`);
-    kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`).row();
+    if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`).row();
   }
 
-  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), { reply_markup: kb });
+  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), {
+    reply_markup: allowKill ? kb : undefined,
+  });
 }
 
 // Спросить подтверждение ручного вывода телефона.
 export async function onKillAsk(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
   const rows = await db
     .select({ imei: phones.imeiLast4, label: phones.label, status: phones.status })

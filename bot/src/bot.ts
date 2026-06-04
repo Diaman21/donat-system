@@ -44,10 +44,15 @@ export function createBot(): Bot<AppContext> {
 
   bot.use(session({ initial: (): SessionData => ({}) }));
 
-  // Бот работает в личке. В группах не реагирует на сообщения
-  // (туда он только сам шлёт статистику).
+  // В группах бот реагирует ТОЛЬКО на команды (/...) и inline-кнопки
+  // (просмотр: /stats, /phones, /recent, /report). Обычные сообщения и
+  // ввод-флоу в группе игнорируются — ввод ведётся в личке.
   bot.use(async (ctx, next) => {
-    if (ctx.chat && ctx.chat.type !== 'private') return;
+    if (ctx.chat && ctx.chat.type !== 'private') {
+      const isCommand = ctx.message?.text?.startsWith('/') ?? false;
+      const isCallback = ctx.callbackQuery !== undefined;
+      if (!isCommand && !isCallback) return;
+    }
     await next();
   });
 
@@ -56,6 +61,8 @@ export function createBot(): Bot<AppContext> {
   // Команды
   bot.command('start', handleStart);
   bot.command('stats', showStats);
+  bot.command('phones', listPhones);
+  bot.command('recent', showRecent);
   bot.command('report', sendReportToGroup);
   bot.command('help', handleHelp);
   bot.command('cancel', handleCancel);
