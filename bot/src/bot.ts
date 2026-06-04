@@ -21,7 +21,7 @@ import {
   startPurchase,
   onPhoneSelected,
   onCategorySelected,
-  onPurchaseGame,
+  onGameSelected,
   onPurchaseAmount,
   onResultSelected,
   CB,
@@ -121,6 +121,11 @@ export function createBot(): Bot<AppContext> {
         await onCategorySelected(ctx, data.slice(CB.cat.length));
         return;
       }
+      if (data.startsWith(CB.game)) {
+        await ctx.answerCallbackQuery();
+        await onGameSelected(ctx, data.slice(CB.game.length));
+        return;
+      }
       if (data.startsWith(CB.result)) {
         await ctx.answerCallbackQuery();
         await onResultSelected(ctx, data.slice(CB.result.length) as PurchaseResultValue);
@@ -141,8 +146,6 @@ export function createBot(): Bot<AppContext> {
         return onAddPhoneImei(ctx, ctx.message.text);
       case 'add_phone_label':
         return onAddPhoneLabel(ctx, ctx.message.text);
-      case 'purchase_game':
-        return onPurchaseGame(ctx, ctx.message.text);
       case 'purchase_amount':
         return onPurchaseAmount(ctx, ctx.message.text);
       default:

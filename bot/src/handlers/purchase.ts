@@ -12,8 +12,12 @@ import { buildPostMortem } from './postmortem.js';
 export const CB = {
   phone: 'pur:phone:', // + phoneId
   cat: 'pur:cat:', // + категория (code)
+  game: 'pur:game:', // + название игры ('' = без игры)
   result: 'pur:res:', // + done|support|long
 } as const;
+
+// Игры для выбора при закупке
+const GAMES = ['Massive', 'Furious'] as const;
 
 const RESULT_LABEL: Record<PurchaseResultValue, string> = {
   done: '✅ Выполнено',
@@ -62,20 +66,25 @@ export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise
   await ctx.reply('Что закупаем?', { reply_markup: kb });
 }
 
-// Шаг 2: выбрана категория → спрашиваем игру.
+// Шаг 2: выбрана категория → выбор игры (кнопки).
 export async function onCategorySelected(ctx: AppContext, code: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_category') return;
   ctx.session.flow = { kind: 'purchase_game', phoneId: flow.phoneId, categoryCode: code };
-  await ctx.reply('В какой игре? (напр. «Массив») или /skip:', { reply_markup: cancelKb() });
+
+  const kb = new InlineKeyboard();
+  for (const g of GAMES) kb.text(g, `${CB.game}${g}`).row();
+  kb.text('⏭ Без игры', `${CB.game}`).row();
+  kb.text('✖️ Отмена', CANCEL_CB);
+  await ctx.reply('В какой игре?', { reply_markup: kb });
 }
 
-// Шаг 3: игра (или /skip) → спрашиваем сумму.
-export async function onPurchaseGame(ctx: AppContext, text: string): Promise<void> {
+// Шаг 3: выбрана игра (или «без игры») → спрашиваем сумму.
+export async function onGameSelected(ctx: AppContext, gameValue: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_game') return;
 
-  const game = text.trim() === '/skip' ? null : text.trim();
+  const game = gameValue.length > 0 ? gameValue : null;
   ctx.session.flow = {
     kind: 'purchase_amount',
     phoneId: flow.phoneId,
