@@ -66,6 +66,26 @@ bot/
 │       └── purchase.ts     пошаговый ввод закупки
 ```
 
+## Деплой на Vercel (webhook, 24/7)
+
+Бот хостится на **Vercel** (serverless, webhook) — работает без локального компа.
+
+- Точка входа: `api/webhook.ts` (`webhookCallback(bot, 'https', { secretToken })`).
+- Состояние ввода — в Neon (`bot_sessions`), т.к. serverless не хранит память.
+- Конфиг: `vercel.json` (явно прописана функция `api/webhook`).
+- **Vercel:** Root Directory = `bot`, Framework = Other. Env vars:
+  `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_GROUP_ID`, `TELEGRAM_WEBHOOK_SECRET`.
+- Регистрация webhook после деплоя:
+  `npx tsx src/setup-webhook.ts https://<project>.vercel.app/api/webhook`
+
+⚠️ **Нюансы serverless (ESM):**
+- Все относительные импорты — с расширением `.js` (нативный Node ESM на Vercel).
+- Адаптер `webhookCallback` — `'https'` (для Vercel Node-runtime), не `'http'`.
+
+⚠️ **Не запускай `npm start` локально, пока бот на Vercel** — `index.ts`
+снимает webhook (`deleteWebhook`) и переводит бота на long polling.
+Чтобы вернуть на Vercel — заново `setup-webhook`.
+
 ## Важно про схему БД
 
 `src/db/schema.ts` — **отражение** реальной схемы (`supabase/migrations/*.sql`),

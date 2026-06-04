@@ -47,8 +47,9 @@
 |---|---|---|
 | БД | **Neon** (serverless Postgres) | Хранение данных, бесплатный план |
 | ORM + миграции | **Drizzle ORM** | TypeScript-типы из схемы, миграции |
-| Telegram-бот | **Node.js + TypeScript + grammY** | Оперативная работа всех ролей |
-| Веб-аналитика | **Next.js (App Router) + TypeScript + Vercel** | База знаний, дашборды |
+| Telegram-бот | **Node.js + TypeScript + grammY** | Логгер закупок, аналитика |
+| Хостинг бота | **Vercel** (serverless, webhook) | Бот 24/7, бесплатный Hobby |
+| Веб-аналитика | **Next.js + Vercel** (позже) | База знаний, дашборды |
 
 Один язык (TS) во всём проекте — типы из Drizzle-схемы, общий tooling.
 
@@ -124,14 +125,17 @@ donat-system/
 
 ## 7. Текущий статус
 
-- ✅ Схема БД применена в Neon (`0001_init.sql` + `0002_add_purchase_game.sql`)
+- ✅ Схема БД в Neon (`0001` + `0002_add_purchase_game` + `0003_bot_sessions`)
 - ✅ БД: Neon (serverless Postgres, scale-to-zero), EU Central, бесплатный план
 - ✅ GitHub: приватный репо `Diaman21/donat-system`, ветка `main`
-- ✅ **Бот `@donat_system_bot` — MVP-логгер работает:** `/start`+роли, привязка
-  телефона, ввод закупки (телефон→игра→сумма→результат) пишется в `purchases`.
-  Проверено вживую. Пользователи: @Boris_donat (moderator), @timka_mir (operator).
-- ⏳ Следующее: статистика в группу (`/stats`), затем предупреждения о «зоне риска»
-- ❌ Веб — не начат
+- ✅ **Бот `@donat_system_bot` работает на Vercel 24/7 (webhook).** Логгер закупок:
+  привязка телефонов, ввод закупки (телефон→категория→игра→сумма→результат),
+  `/stats` с периодами, `/report` в группу, последние/удаление, post-mortem,
+  ручной вывод телефона. Группа «Pattern_analyst 🧮» подключена.
+  Пользователи: @Boris_donat (moderator), @timka_mir (operator).
+- ✅ **Хостинг: Vercel (Hobby, webhook), сессии в Neon.** Деплой из `bot/` (Root Directory).
+- ⏳ Следующее: авто-сводки в группу (Vercel Cron), предупреждения о «зоне риска»
+- ❌ Веб-дашборд — не начат (когда накопятся данные)
 
 ## 8. Рабочий процесс (важно)
 
