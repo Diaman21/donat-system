@@ -4,6 +4,7 @@ import { db } from '../db/client';
 import { phones, purchases } from '../db/schema';
 import type { AppContext } from '../context';
 import { requireOperator } from './start';
+import { env } from '../config';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d
@@ -123,5 +124,22 @@ export async function onStatsPeriod(ctx: AppContext, period: StatsPeriod): Promi
     await ctx.editMessageText(text, { reply_markup: kb });
   } catch {
     await ctx.reply(text, { reply_markup: kb });
+  }
+}
+
+// /report — отправить сводку (за неделю) в группу.
+export async function sendReportToGroup(ctx: AppContext): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+  if (!env.groupChatId) {
+    await ctx.reply('Группа не настроена (нет TELEGRAM_GROUP_ID).');
+    return;
+  }
+  const { text } = await renderStats('7d');
+  try {
+    await ctx.api.sendMessage(env.groupChatId, text);
+    await ctx.reply('✅ Отчёт отправлен в группу.');
+  } catch (err) {
+    console.error('Не удалось отправить отчёт в группу:', err);
+    await ctx.reply('Не удалось отправить в группу. Проверь, что бот в группе и ID верный.');
   }
 }

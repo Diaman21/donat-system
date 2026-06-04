@@ -18,6 +18,7 @@ async function main(): Promise<void> {
   await bot.api.setMyCommands([
     { command: 'start', description: 'Меню' },
     { command: 'stats', description: 'Статистика' },
+    { command: 'report', description: 'Отчёт в группу' },
     { command: 'help', description: 'Помощь' },
     { command: 'cancel', description: 'Отменить ввод' },
   ]);

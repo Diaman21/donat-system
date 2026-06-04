@@ -25,7 +25,13 @@ import {
   onResultSelected,
   CB,
 } from './handlers/purchase';
-import { showStats, onStatsPeriod, STATS_CB, type StatsPeriod } from './handlers/stats';
+import {
+  showStats,
+  onStatsPeriod,
+  sendReportToGroup,
+  STATS_CB,
+  type StatsPeriod,
+} from './handlers/stats';
 import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent';
 import type { PurchaseResultValue } from './db/schema';
 
@@ -37,11 +43,20 @@ export function createBot(): Bot<AppContext> {
   const bot = new Bot<AppContext>(env.botToken);
 
   bot.use(session({ initial: (): SessionData => ({}) }));
+
+  // Бот работает в личке. В группах не реагирует на сообщения
+  // (туда он только сам шлёт статистику).
+  bot.use(async (ctx, next) => {
+    if (ctx.chat && ctx.chat.type !== 'private') return;
+    await next();
+  });
+
   bot.use(loadUser);
 
   // Команды
   bot.command('start', handleStart);
   bot.command('stats', showStats);
+  bot.command('report', sendReportToGroup);
   bot.command('help', handleHelp);
   bot.command('cancel', handleCancel);
 

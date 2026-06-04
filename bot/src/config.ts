@@ -22,5 +22,7 @@ export const env = {
   botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
   /** ID чата модератора для системных уведомлений (опционально). */
   moderatorChatId: process.env.TELEGRAM_MODERATOR_CHAT_ID ?? '',
+  /** ID группы для статистики (опционально, заполним после получения ID). */
+  groupChatId: process.env.TELEGRAM_GROUP_ID ?? '',
   nodeEnv: process.env.NODE_ENV ?? 'development',
 };
