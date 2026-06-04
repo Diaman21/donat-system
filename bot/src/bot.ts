@@ -39,6 +39,7 @@ import {
 } from './handlers/stats.js';
 import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent.js';
 import { exportCsv } from './handlers/export.js';
+import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js';
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
@@ -75,6 +76,7 @@ export function createBot(): Bot<AppContext> {
   bot.command('stats', showStats);
   bot.command('phones', listPhones);
   bot.command('recent', showRecent);
+  bot.command('history', showPhoneList);
   bot.command('report', sendReportToGroup);
   bot.command('export', exportCsv);
   bot.command('help', handleHelp);
@@ -116,6 +118,11 @@ export function createBot(): Bot<AppContext> {
       if (data.startsWith(KILL_CB)) {
         await ctx.answerCallbackQuery();
         await onKillAsk(ctx, data.slice(KILL_CB.length));
+        return;
+      }
+      if (data.startsWith(HIST_CB)) {
+        await ctx.answerCallbackQuery();
+        await showPhoneHistory(ctx, data.slice(HIST_CB.length));
         return;
       }
       if (data.startsWith(CB.phone)) {
