@@ -1,6 +1,7 @@
 import { Bot, session } from 'grammy';
 import { env } from './config';
 import type { AppContext, SessionData } from './context';
+import { NeonSessionStore } from './db/session-store';
 import { loadUser } from './middlewares/auth';
 import { handleStart } from './handlers/start';
 import { handleHelp } from './handlers/help';
@@ -42,7 +43,12 @@ export function createBot(): Bot<AppContext> {
 
   const bot = new Bot<AppContext>(env.botToken);
 
-  bot.use(session({ initial: (): SessionData => ({}) }));
+  bot.use(
+    session({
+      initial: (): SessionData => ({}),
+      storage: new NeonSessionStore(),
+    }),
+  );
 
   // В группах бот реагирует ТОЛЬКО на команды (/...) и inline-кнопки
   // (просмотр: /stats, /phones, /recent, /report). Обычные сообщения и

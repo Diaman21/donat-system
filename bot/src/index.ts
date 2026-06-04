@@ -1,5 +1,6 @@
 import { createBot } from './bot';
 import { client } from './db/client';
+import { BOT_COMMANDS } from './commands';
 
 async function main(): Promise<void> {
   const bot = createBot();
@@ -15,15 +16,11 @@ async function main(): Promise<void> {
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
   // Меню команд в Telegram (выпадают при вводе «/»)
-  await bot.api.setMyCommands([
-    { command: 'start', description: 'Меню' },
-    { command: 'stats', description: 'Статистика' },
-    { command: 'phones', description: 'Телефоны' },
-    { command: 'recent', description: 'Последние закупки' },
-    { command: 'report', description: 'Отчёт в группу' },
-    { command: 'help', description: 'Помощь' },
-    { command: 'cancel', description: 'Отменить ввод' },
-  ]);
+  await bot.api.setMyCommands(BOT_COMMANDS);
+
+  // Локальный режim — long polling. Снимаем webhook, если он был
+  // установлен (Telegram не даёт работать обоим режимам одновременно).
+  await bot.api.deleteWebhook();
 
   console.log('Бот запускается...');
   await bot.start({

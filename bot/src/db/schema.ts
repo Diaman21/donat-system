@@ -105,6 +105,14 @@ export const purchases = pgTable('purchases', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- bot_sessions — состояние пошагового ввода (grammy session) ----------
+// Нужно для serverless (Vercel): память между запросами не сохраняется.
+export const botSessions = pgTable('bot_sessions', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Типы для удобства ----------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
