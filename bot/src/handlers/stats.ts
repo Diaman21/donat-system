@@ -1,10 +1,10 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
-import { db } from '../db/client';
-import { phones, purchases } from '../db/schema';
-import type { AppContext } from '../context';
-import { requireOperator } from './start';
-import { env } from '../config';
+import { db } from '../db/client.js';
+import { phones, purchases } from '../db/schema.js';
+import type { AppContext } from '../context.js';
+import { requireOperator } from './start.js';
+import { env } from '../config.js';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d

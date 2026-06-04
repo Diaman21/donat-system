@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
-import type { AppContext } from '../context';
-import { menuFor } from './menus';
+import type { AppContext } from '../context.js';
+import { menuFor } from './menus.js';
 
 export const CANCEL_CB = 'cancel';
 

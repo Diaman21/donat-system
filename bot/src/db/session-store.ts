@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import type { StorageAdapter } from 'grammy';
-import { db } from './client';
-import { botSessions } from './schema';
-import type { SessionData } from '../context';
+import { db } from './client.js';
+import { botSessions } from './schema.js';
+import type { SessionData } from '../context.js';
 
 // Хранилище grammy-сессий в Neon (Postgres).
 // Нужно для serverless (Vercel), где память между запросами не сохраняется.

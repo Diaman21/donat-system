@@ -1,5 +1,5 @@
 import type { Context, SessionFlavor } from 'grammy';
-import type { User } from './db/schema';
+import type { User } from './db/schema.js';
 
 // Состояние пошагового ввода (мастер-формы).
 // Выбор телефона и результата — через inline-кнопки (callback),

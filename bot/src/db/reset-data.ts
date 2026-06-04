@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { db, client } from './client';
-import { phones, purchases } from './schema';
+import { db, client } from './client.js';
+import { phones, purchases } from './schema.js';
 
 // Очистка ТЕСТОВЫХ данных: удаляет все покупки и телефоны.
 // НЕ трогает users (роли) и purchase_categories (seed).

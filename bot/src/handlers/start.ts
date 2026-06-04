@@ -1,7 +1,7 @@
-import { db } from '../db/client';
-import { users } from '../db/schema';
-import type { AppContext } from '../context';
-import { greeting, menuFor } from './menus';
+import { db } from '../db/client.js';
+import { users } from '../db/schema.js';
+import type { AppContext } from '../context.js';
+import { greeting, menuFor } from './menus.js';
 
 // /start — регистрирует пользователя (если новый, роль customer = «без доступа»)
 // и показывает меню для operator/moderator. customer получает просьбу

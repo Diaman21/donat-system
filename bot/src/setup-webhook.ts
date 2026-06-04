@@ -1,6 +1,6 @@
 import { Bot } from 'grammy';
-import { env } from './config';
-import { BOT_COMMANDS } from './commands';
+import { env } from './config.js';
+import { BOT_COMMANDS } from './commands.js';
 
 // Регистрация webhook у Telegram + команды бота.
 // Запуск после деплоя на Vercel:

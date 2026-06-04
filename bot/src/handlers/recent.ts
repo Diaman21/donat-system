@@ -1,11 +1,11 @@
 import { desc, eq } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
-import { db } from '../db/client';
-import { phones, purchases, users, type PurchaseResultValue } from '../db/schema';
-import type { AppContext } from '../context';
-import { mainMenu } from './menus';
-import { requireOperator } from './start';
-import { CANCEL_CB, requirePrivate } from './common';
+import { db } from '../db/client.js';
+import { phones, purchases, users, type PurchaseResultValue } from '../db/schema.js';
+import type { AppContext } from '../context.js';
+import { mainMenu } from './menus.js';
+import { requireOperator } from './start.js';
+import { CANCEL_CB, requirePrivate } from './common.js';
 
 export const DELLAST_CB = 'dellast:confirm';
 

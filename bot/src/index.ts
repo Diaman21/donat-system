@@ -1,6 +1,6 @@
-import { createBot } from './bot';
-import { client } from './db/client';
-import { BOT_COMMANDS } from './commands';
+import { createBot } from './bot.js';
+import { client } from './db/client.js';
+import { BOT_COMMANDS } from './commands.js';
 
 async function main(): Promise<void> {
   const bot = createBot();

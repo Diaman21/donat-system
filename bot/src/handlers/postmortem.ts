@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { phones, purchases, type PurchaseResultValue } from '../db/schema';
+import { db } from '../db/client.js';
+import { phones, purchases, type PurchaseResultValue } from '../db/schema.js';
 
 function fmtSpan(ms: number): string {
   const totalHours = Math.floor(ms / 3_600_000);

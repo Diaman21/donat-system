@@ -1,5 +1,5 @@
-import { db, client } from './client';
-import { purchaseCategories } from './schema';
+import { db, client } from './client.js';
+import { purchaseCategories } from './schema.js';
 
 // Утилита проверки подключения к Neon.
 // Запуск: npm run db:check

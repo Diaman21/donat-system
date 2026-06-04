@@ -1,12 +1,12 @@
 import { Bot, session } from 'grammy';
-import { env } from './config';
-import type { AppContext, SessionData } from './context';
-import { NeonSessionStore } from './db/session-store';
-import { loadUser } from './middlewares/auth';
-import { handleStart } from './handlers/start';
-import { handleHelp } from './handlers/help';
-import { handleCancel, CANCEL_CB } from './handlers/common';
-import { BTN } from './handlers/menus';
+import { env } from './config.js';
+import type { AppContext, SessionData } from './context.js';
+import { NeonSessionStore } from './db/session-store.js';
+import { loadUser } from './middlewares/auth.js';
+import { handleStart } from './handlers/start.js';
+import { handleHelp } from './handlers/help.js';
+import { handleCancel, CANCEL_CB } from './handlers/common.js';
+import { BTN } from './handlers/menus.js';
 import {
   startAddPhone,
   onAddPhoneImei,
@@ -16,7 +16,7 @@ import {
   onKillConfirm,
   KILL_CB,
   KILLC_CB,
-} from './handlers/phones';
+} from './handlers/phones.js';
 import {
   startPurchase,
   onPhoneSelected,
@@ -25,16 +25,16 @@ import {
   onPurchaseAmount,
   onResultSelected,
   CB,
-} from './handlers/purchase';
+} from './handlers/purchase.js';
 import {
   showStats,
   onStatsPeriod,
   sendReportToGroup,
   STATS_CB,
   type StatsPeriod,
-} from './handlers/stats';
-import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent';
-import type { PurchaseResultValue } from './db/schema';
+} from './handlers/stats.js';
+import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent.js';
+import type { PurchaseResultValue } from './db/schema.js';
 
 export function createBot(): Bot<AppContext> {
   if (!env.botToken) {

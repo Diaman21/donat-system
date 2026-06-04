@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
-import { db, client } from './client';
-import { users, type UserRole } from './schema';
+import { db, client } from './client.js';
+import { users, type UserRole } from './schema.js';
 
 // Утилита: назначить роль пользователю.
 // Запуск: npx tsx src/db/set-role.ts <telegram_id> <customer|operator|moderator>

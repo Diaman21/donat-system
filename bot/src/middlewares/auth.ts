@@ -1,8 +1,8 @@
 import type { NextFunction } from 'grammy';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { users } from '../db/schema';
-import type { AppContext } from '../context';
+import { db } from '../db/client.js';
+import { users } from '../db/schema.js';
+import type { AppContext } from '../context.js';
 
 // Подгружает пользователя из БД по telegram_id в ctx.dbUser.
 // Если пользователя ещё нет — оставляет ctx.dbUser undefined

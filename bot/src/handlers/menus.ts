@@ -1,6 +1,6 @@
 import { Keyboard } from 'grammy';
-import type { User } from '../db/schema';
-import type { AppContext } from '../context';
+import type { User } from '../db/schema.js';
+import type { AppContext } from '../context.js';
 
 // Метки кнопок главного меню (используются и при отрисовке, и в роутинге).
 export const BTN = {

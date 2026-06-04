@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { env } from '../config';
-import * as schema from './schema';
+import { env } from '../config.js';
+import * as schema from './schema.js';
 
 // Подключение к Neon через pooler.
 // prepare: false — обязательно для пулера (PgBouncer в transaction mode

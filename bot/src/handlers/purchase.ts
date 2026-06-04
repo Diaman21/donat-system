@@ -1,12 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
-import { db } from '../db/client';
-import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema';
-import type { AppContext } from '../context';
-import { mainMenu } from './menus';
-import { requireOperator } from './start';
-import { cancelKb, CANCEL_CB, requirePrivate } from './common';
-import { buildPostMortem } from './postmortem';
+import { db } from '../db/client.js';
+import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
+import type { AppContext } from '../context.js';
+import { mainMenu } from './menus.js';
+import { requireOperator } from './start.js';
+import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
+import { buildPostMortem } from './postmortem.js';
 
 // Префиксы callback-данных
 export const CB = {
