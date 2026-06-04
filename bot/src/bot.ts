@@ -36,6 +36,7 @@ import {
   type StatsPeriod,
 } from './handlers/stats.js';
 import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent.js';
+import { exportCsv } from './handlers/export.js';
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
@@ -73,6 +74,7 @@ export function createBot(): Bot<AppContext> {
   bot.command('phones', listPhones);
   bot.command('recent', showRecent);
   bot.command('report', sendReportToGroup);
+  bot.command('export', exportCsv);
   bot.command('help', handleHelp);
   bot.command('cancel', handleCancel);
 

@@ -50,3 +50,10 @@ export async function requireOperator(ctx: AppContext): Promise<boolean> {
   await ctx.reply('Нет доступа. Напиши /start и попроси модератора выдать роль.');
   return false;
 }
+
+// Проверка доступа: только модератор.
+export async function requireModerator(ctx: AppContext): Promise<boolean> {
+  if (ctx.dbUser?.role === 'moderator') return true;
+  await ctx.reply('Эта команда только для модератора.');
+  return false;
+}

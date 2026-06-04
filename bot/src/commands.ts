@@ -7,6 +7,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: 'phones', description: 'Телефоны' },
   { command: 'recent', description: 'Последние закупки' },
   { command: 'report', description: 'Отчёт в группу' },
+  { command: 'export', description: 'Выгрузка CSV (модератор)' },
   { command: 'help', description: 'Помощь' },
   { command: 'cancel', description: 'Отменить ввод' },
 ];
