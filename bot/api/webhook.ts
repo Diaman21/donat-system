@@ -6,6 +6,7 @@ import { env } from '../src/config';
 // Бот создаётся один раз на «тёплый» инстанс и переиспользуется.
 const bot = createBot();
 
-export default webhookCallback(bot, 'http', {
+// Адаптер 'https' — для Vercel Node-runtime (рекомендация grammY).
+export default webhookCallback(bot, 'https', {
   secretToken: env.webhookSecret || undefined,
 });
