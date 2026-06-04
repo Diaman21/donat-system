@@ -1,9 +1,9 @@
 import type { Context, SessionFlavor } from 'grammy';
-import type { User } from './db/schema.js';
+import type { User, PurchaseResultValue } from './db/schema.js';
 
 // Состояние пошагового ввода (мастер-формы).
-// Выбор телефона и результата — через inline-кнопки (callback),
-// ввод IMEI / игры / суммы — текстом (роутится по flow).
+// Выбор телефона/категории/игры/суммы/результата — через inline-кнопки;
+// ввод IMEI и «своей» суммы — текстом (роутится по flow).
 export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
@@ -16,6 +16,14 @@ export type FlowState =
       categoryCode: string;
       game: string | null;
       amount: string;
+    }
+  | {
+      kind: 'purchase_confirm';
+      phoneId: string;
+      categoryCode: string;
+      game: string | null;
+      amount: string;
+      result: PurchaseResultValue;
     };
 
 export interface SessionData {

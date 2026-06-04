@@ -22,8 +22,10 @@ import {
   onPhoneSelected,
   onCategorySelected,
   onGameSelected,
+  onAmountSelected,
   onPurchaseAmount,
   onResultSelected,
+  onConfirmSave,
   CB,
 } from './handlers/purchase.js';
 import {
@@ -124,6 +126,16 @@ export function createBot(): Bot<AppContext> {
       if (data.startsWith(CB.game)) {
         await ctx.answerCallbackQuery();
         await onGameSelected(ctx, data.slice(CB.game.length));
+        return;
+      }
+      if (data.startsWith(CB.amount)) {
+        await ctx.answerCallbackQuery();
+        await onAmountSelected(ctx, data.slice(CB.amount.length));
+        return;
+      }
+      if (data === CB.save) {
+        await ctx.answerCallbackQuery();
+        await onConfirmSave(ctx);
         return;
       }
       if (data.startsWith(CB.result)) {
