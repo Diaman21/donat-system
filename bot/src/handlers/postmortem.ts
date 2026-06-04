@@ -21,7 +21,12 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   if (!ph) return '';
 
   const all = await db
-    .select({ amount: purchases.amount, result: purchases.result, at: purchases.purchasedAt })
+    .select({
+      amount: purchases.amount,
+      result: purchases.result,
+      at: purchases.purchasedAt,
+      notes: purchases.notes,
+    })
     .from(purchases)
     .where(eq(purchases.phoneId, phoneId))
     .orderBy(desc(purchases.purchasedAt));
@@ -35,12 +40,18 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const lastFew = all.slice(0, 5).reverse();
   const seq = lastFew.map((p) => `$${p.amount}${emoji(p.result)}`).join(' → ');
 
+  // заметки последних покупок (если есть) — важны для разбора
+  const noteLines = lastFew
+    .filter((p) => p.notes)
+    .map((p) => `  • $${p.amount}${emoji(p.result)}: ${p.notes}`);
+
   const label = ph.label ? ` «${ph.label}»` : '';
   return [
     `🪦 Итог по телефону …${ph.imeiLast4}${label}`,
     `Прожил: ${cnt} покупок на $${total.toFixed(2)}`,
     `Время жизни: ${fmtSpan(span)}`,
     lastFew.length > 0 ? `Перед смертью: ${seq}` : '',
+    noteLines.length > 0 ? `Заметки:\n${noteLines.join('\n')}` : '',
   ]
     .filter(Boolean)
     .join('\n');

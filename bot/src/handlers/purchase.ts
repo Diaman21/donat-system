@@ -15,6 +15,7 @@ export const CB = {
   game: 'pur:game:', // + название игры ('' = без игры)
   amount: 'pur:amt:', // + число | 'custom'
   result: 'pur:res:', // + done|support|long
+  note: 'pur:note', // добавить/изменить заметку (точное совпадение)
   save: 'pur:save', // подтвердить запись (точное совпадение)
 } as const;
 
@@ -177,7 +178,15 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     game: flow.game,
     amount: flow.amount,
     result,
+    note: null,
   };
+  await showConfirm(ctx);
+}
+
+// Показ экрана подтверждения (с заметкой, если есть).
+async function showConfirm(ctx: AppContext): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_confirm') return;
 
   const ph = await db
     .select({ imei: phones.imeiLast4 })
@@ -193,14 +202,55 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     `📱 …${imei}`,
     `🗂 ${catLabel}${flow.game ? ` · ${flow.game}` : ''}`,
     `💵 $${flow.amount}`,
-    `Результат: ${RESULT_LABEL[result]}`,
-  ].join('\n');
+    `Результат: ${RESULT_LABEL[flow.result]}`,
+    flow.note ? `📝 ${flow.note}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-  const kb = new InlineKeyboard().text('✅ Записать', CB.save).text('✖️ Отмена', CANCEL_CB);
+  const kb = new InlineKeyboard()
+    .text('✅ Записать', CB.save)
+    .text(flow.note ? '📝 Изменить заметку' : '📝 Заметка', CB.note)
+    .row()
+    .text('✖️ Отмена', CANCEL_CB);
   await ctx.reply(summary, { reply_markup: kb });
 }
 
-// Шаг 6: подтверждено → сохраняем покупку.
+// «📝 Заметка» — запросить текст заметки.
+export async function onNoteRequest(ctx: AppContext): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_confirm') return;
+  ctx.session.flow = {
+    kind: 'purchase_note',
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game: flow.game,
+    amount: flow.amount,
+    result: flow.result,
+  };
+  await ctx.reply('Напиши заметку по закупке (логи, детали, что с саппортом и т.п.):', {
+    reply_markup: cancelKb(),
+  });
+}
+
+// Текст заметки → возврат к подтверждению.
+export async function onPurchaseNote(ctx: AppContext, text: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_note') return;
+  const note = text.trim().length > 0 ? text.trim() : null;
+  ctx.session.flow = {
+    kind: 'purchase_confirm',
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game: flow.game,
+    amount: flow.amount,
+    result: flow.result,
+    note,
+  };
+  await showConfirm(ctx);
+}
+
+// Шаг 6: подтверждено → сохраняем покупку (с заметкой).
 export async function onConfirmSave(ctx: AppContext): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_confirm') {
@@ -231,15 +281,17 @@ export async function onConfirmSave(ctx: AppContext): Promise<void> {
     amount: flow.amount,
     result: flow.result,
     game: flow.game,
+    notes: flow.note,
   });
 
-  const { phoneId, result, amount, game } = flow;
+  const { phoneId, result, amount, game, note } = flow;
   ctx.session.flow = undefined;
 
   const parts = [
     `✅ Записано: ${RESULT_LABEL[result]}`,
     `Сумма: $${amount}`,
     game ? `Игра: ${game}` : null,
+    note ? `📝 ${note}` : null,
   ].filter(Boolean);
 
   // При 💀 — телефон умер (триггер). Показываем «надгробие».

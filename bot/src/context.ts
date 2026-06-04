@@ -18,12 +18,21 @@ export type FlowState =
       amount: string;
     }
   | {
+      kind: 'purchase_note';
+      phoneId: string;
+      categoryCode: string;
+      game: string | null;
+      amount: string;
+      result: PurchaseResultValue;
+    }
+  | {
       kind: 'purchase_confirm';
       phoneId: string;
       categoryCode: string;
       game: string | null;
       amount: string;
       result: PurchaseResultValue;
+      note: string | null;
     };
 
 export interface SessionData {

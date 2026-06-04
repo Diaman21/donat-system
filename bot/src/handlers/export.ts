@@ -24,6 +24,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       game: purchases.game,
       imei: phones.imeiLast4,
       operator: users.username,
+      notes: purchases.notes,
     })
     .from(purchases)
     .innerJoin(phones, eq(phones.id, purchases.phoneId))
@@ -35,7 +36,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
     return;
   }
 
-  const header = ['Время (МСК)', 'Телефон', 'Игра', 'Сумма $', 'Результат', 'Оператор'];
+  const header = ['Время (МСК)', 'Телефон', 'Игра', 'Сумма $', 'Результат', 'Оператор', 'Заметка'];
   const lines = [header.join(';')];
   for (const r of rows) {
     const cells = [
@@ -45,6 +46,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       r.amount,
       r.result,
       r.operator ?? '',
+      r.notes ?? '',
     ];
     lines.push(cells.map((c) => csvCell(String(c))).join(';'));
   }

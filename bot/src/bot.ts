@@ -25,6 +25,8 @@ import {
   onAmountSelected,
   onPurchaseAmount,
   onResultSelected,
+  onNoteRequest,
+  onPurchaseNote,
   onConfirmSave,
   CB,
 } from './handlers/purchase.js';
@@ -136,6 +138,11 @@ export function createBot(): Bot<AppContext> {
         await onAmountSelected(ctx, data.slice(CB.amount.length));
         return;
       }
+      if (data === CB.note) {
+        await ctx.answerCallbackQuery();
+        await onNoteRequest(ctx);
+        return;
+      }
       if (data === CB.save) {
         await ctx.answerCallbackQuery();
         await onConfirmSave(ctx);
@@ -163,6 +170,8 @@ export function createBot(): Bot<AppContext> {
         return onAddPhoneLabel(ctx, ctx.message.text);
       case 'purchase_amount':
         return onPurchaseAmount(ctx, ctx.message.text);
+      case 'purchase_note':
+        return onPurchaseNote(ctx, ctx.message.text);
       default:
         await ctx.reply('Не понял. Открой меню: /start или /help.');
     }
