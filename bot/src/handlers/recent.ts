@@ -6,6 +6,7 @@ import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { CANCEL_CB, requirePrivate } from './common.js';
+import { fmtMsk } from '../format.js';
 
 export const DELLAST_CB = 'dellast:confirm';
 
@@ -15,11 +16,7 @@ const RESULT_EMOJI: Record<PurchaseResultValue, string> = {
   long: '💀',
 };
 
-function fmtTime(d: Date): string {
-  // короткий формат ДД.ММ ЧЧ:ММ
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+const fmtTime = fmtMsk;
 
 // «🧾 Последние» — последние 10 закупок (все операторы).
 export async function showRecent(ctx: AppContext): Promise<void> {
