@@ -1,4 +1,11 @@
 {
-  "builds": [{ "src": "api/webhook.ts", "use": "@vercel/node" }],
-  "routes": [{ "src": "/api/webhook", "dest": "/api/webhook.ts" }]
+  "builds": [
+    { "src": "api/webhook.ts", "use": "@vercel/node" },
+    { "src": "api/cron-report.ts", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/webhook", "dest": "/api/webhook.ts" },
+    { "src": "/api/cron-report", "dest": "/api/cron-report.ts" }
+  ],
+  "crons": [{ "path": "/api/cron-report", "schedule": "0 9 * * *" }]
 }

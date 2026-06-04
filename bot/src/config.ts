@@ -26,5 +26,7 @@ export const env = {
   groupChatId: process.env.TELEGRAM_GROUP_ID ?? '',
   /** Секрет вебхука (Vercel): Telegram шлёт его в заголовке, мы проверяем. */
   webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
+  /** Секрет cron (Vercel): шлётся в Authorization при вызове по расписанию. */
+  cronSecret: process.env.CRON_SECRET ?? '',
   nodeEnv: process.env.NODE_ENV ?? 'development',
 };

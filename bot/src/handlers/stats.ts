@@ -33,7 +33,9 @@ function periodKeyboard(active: StatsPeriod): InlineKeyboard {
     .text(mark('all', 'Всё'), `${STATS_CB}all`);
 }
 
-async function renderStats(period: StatsPeriod): Promise<{ text: string; kb: InlineKeyboard }> {
+export async function renderStats(
+  period: StatsPeriod,
+): Promise<{ text: string; kb: InlineKeyboard }> {
   const filter = periodFilter(period);
 
   // Покупки по результату (с учётом периода)
