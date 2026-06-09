@@ -94,76 +94,48 @@ export function createBot(): Bot<AppContext> {
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
     try {
-      if (data === CANCEL_CB) {
-        await ctx.answerCallbackQuery();
-        await handleCancel(ctx);
-        return;
+      await ctx.answerCallbackQuery();
+
+      // «Отжимаем» кнопки нажатого сообщения — убираем клавиатуру, чтобы
+      // нельзя было нажать повторно и было видно, что шаг пройден.
+      // Исключение: переключатель периодов /stats сам редактирует это сообщение.
+      if (!data.startsWith(STATS_CB)) {
+        await ctx.editMessageReplyMarkup().catch(() => {});
       }
-      if (data === DELLAST_CB) {
-        await ctx.answerCallbackQuery();
-        await confirmDeleteLast(ctx);
-        return;
-      }
+
+      if (data === CANCEL_CB) return void (await handleCancel(ctx));
+      if (data === DELLAST_CB) return void (await confirmDeleteLast(ctx));
       if (data.startsWith(STATS_CB)) {
-        await ctx.answerCallbackQuery();
-        await onStatsPeriod(ctx, data.slice(STATS_CB.length) as StatsPeriod);
-        return;
+        return void (await onStatsPeriod(ctx, data.slice(STATS_CB.length) as StatsPeriod));
       }
       // вывод телефона: killc: проверяем раньше kill:
       if (data.startsWith(KILLC_CB)) {
-        await ctx.answerCallbackQuery();
-        await onKillConfirm(ctx, data.slice(KILLC_CB.length));
-        return;
+        return void (await onKillConfirm(ctx, data.slice(KILLC_CB.length)));
       }
-      if (data.startsWith(KILL_CB)) {
-        await ctx.answerCallbackQuery();
-        await onKillAsk(ctx, data.slice(KILL_CB.length));
-        return;
-      }
+      if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
       if (data.startsWith(HIST_CB)) {
-        await ctx.answerCallbackQuery();
-        await showPhoneHistory(ctx, data.slice(HIST_CB.length));
-        return;
+        return void (await showPhoneHistory(ctx, data.slice(HIST_CB.length)));
       }
       if (data.startsWith(CB.phone)) {
-        await ctx.answerCallbackQuery();
-        await onPhoneSelected(ctx, data.slice(CB.phone.length));
-        return;
+        return void (await onPhoneSelected(ctx, data.slice(CB.phone.length)));
       }
       if (data.startsWith(CB.cat)) {
-        await ctx.answerCallbackQuery();
-        await onCategorySelected(ctx, data.slice(CB.cat.length));
-        return;
+        return void (await onCategorySelected(ctx, data.slice(CB.cat.length)));
       }
       if (data.startsWith(CB.game)) {
-        await ctx.answerCallbackQuery();
-        await onGameSelected(ctx, data.slice(CB.game.length));
-        return;
+        return void (await onGameSelected(ctx, data.slice(CB.game.length)));
       }
       if (data.startsWith(CB.amount)) {
-        await ctx.answerCallbackQuery();
-        await onAmountSelected(ctx, data.slice(CB.amount.length));
-        return;
+        return void (await onAmountSelected(ctx, data.slice(CB.amount.length)));
       }
-      if (data === CB.note) {
-        await ctx.answerCallbackQuery();
-        await onNoteRequest(ctx);
-        return;
-      }
-      if (data === CB.save) {
-        await ctx.answerCallbackQuery();
-        await onConfirmSave(ctx);
-        return;
-      }
+      if (data === CB.note) return void (await onNoteRequest(ctx));
+      if (data === CB.save) return void (await onConfirmSave(ctx));
       if (data.startsWith(CB.result)) {
-        await ctx.answerCallbackQuery();
-        await onResultSelected(ctx, data.slice(CB.result.length) as PurchaseResultValue);
-        return;
+        return void (await onResultSelected(ctx, data.slice(CB.result.length) as PurchaseResultValue));
       }
-      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error('Ошибка в callback:', err);
-      await ctx.answerCallbackQuery({ text: 'Ошибка, попробуй заново' });
+      await ctx.answerCallbackQuery({ text: 'Ошибка, попробуй заново' }).catch(() => {});
     }
   });
 
