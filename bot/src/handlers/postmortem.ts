@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { phones, purchases, type PurchaseResultValue } from '../db/schema.js';
+import { fmtMsk } from '../format.js';
 
 function fmtSpan(ms: number): string {
   const totalHours = Math.floor(ms / 3_600_000);
@@ -14,7 +15,10 @@ function fmtSpan(ms: number): string {
 const emoji = (r: PurchaseResultValue): string =>
   r === 'long' ? '💀' : r === 'support' ? '⚠️' : '✅';
 
-// «Надгробие» телефона: сколько прожил, на сколько $, последовательность сумм перед смертью.
+// сколько последних покупок показывать в таймлайне «надгробия»
+const TIMELINE = 12;
+
+// «Надгробие» телефона: даты жизни, итог и таймлайн покупок с датами/временем.
 export async function buildPostMortem(phoneId: string): Promise<string> {
   const phRows = await db.select().from(phones).where(eq(phones.id, phoneId)).limit(1);
   const ph = phRows[0];
@@ -25,6 +29,7 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
       amount: purchases.amount,
       result: purchases.result,
       at: purchases.purchasedAt,
+      game: purchases.game,
       notes: purchases.notes,
     })
     .from(purchases)
@@ -36,23 +41,26 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const end = ph.diedAt ?? new Date();
   const span = end.getTime() - ph.connectedAt.getTime();
 
-  // последние до 5 покупок в хронологическом порядке
-  const lastFew = all.slice(0, 5).reverse();
-  const seq = lastFew.map((p) => `$${p.amount}${emoji(p.result)}`).join(' → ');
-
-  // заметки последних покупок (если есть) — важны для разбора
-  const noteLines = lastFew
-    .filter((p) => p.notes)
-    .map((p) => `  • $${p.amount}${emoji(p.result)}: ${p.notes}`);
+  // последние покупки в хронологическом порядке — с датой/временем (МСК)
+  const last = all.slice(0, TIMELINE).reverse();
+  const omitted = cnt - last.length;
+  const timeline = last.map((p) => {
+    const g = p.game ? ` ${p.game}` : '';
+    const note = p.notes ? `\n      📝 ${p.notes}` : '';
+    return `  ${fmtMsk(p.at)} ${emoji(p.result)} $${p.amount}${g}${note}`;
+  });
 
   const label = ph.label ? ` «${ph.label}»` : '';
   return [
     `🪦 Итог по телефону …${ph.imeiLast4}${label}`,
-    `Прожил: ${cnt} покупок на $${total.toFixed(2)}`,
-    `Время жизни: ${fmtSpan(span)}`,
-    lastFew.length > 0 ? `Перед смертью: ${seq}` : '',
-    noteLines.length > 0 ? `Заметки:\n${noteLines.join('\n')}` : '',
+    `Подключён: ${fmtMsk(ph.connectedAt)}`,
+    ph.diedAt ? `Умер: ${fmtMsk(ph.diedAt)}` : '',
+    `Прожил: ${cnt} покупок на $${total.toFixed(2)} за ${fmtSpan(span)}`,
+    cnt > 0 ? '' : null,
+    cnt > 0 ? (omitted > 0 ? `Последние ${TIMELINE} покупок:` : 'Все покупки:') : '',
+    ...timeline,
+    omitted > 0 ? `…и ещё ${omitted} ранее (полностью — /history).` : '',
   ]
-    .filter(Boolean)
+    .filter((l) => l !== null && l !== '')
     .join('\n');
 }
