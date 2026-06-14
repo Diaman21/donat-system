@@ -135,17 +135,18 @@ export async function onKillAsk(ctx: AppContext, phoneId: string): Promise<void>
     .text('✅ Вывести', `${KILLC_CB}${phoneId}`)
     .text('✖️ Отмена', CANCEL_CB);
   await ctx.reply(
-    `Вывести телефон …${ph.imei}${ph.label ? ` («${ph.label}»)` : ''} из активных?`,
+    `Вынужденно вывести телефон …${ph.imei}${ph.label ? ` («${ph.label}»)` : ''} из активных?\n` +
+      'Это для возврата бюджета (НЕ ошибка Apple) — в аналитике помечается как искусственная смерть.',
     { reply_markup: kb },
   );
 }
 
-// Подтверждённый ручной вывод: помечаем dead (без покупки) + показываем итог.
+// Подтверждённый ручной вывод: помечаем dead с причиной 'forced' + показываем итог.
 export async function onKillConfirm(ctx: AppContext, phoneId: string): Promise<void> {
   if (!(await requireOperator(ctx))) return;
   const upd = await db
     .update(phones)
-    .set({ status: 'dead', diedAt: new Date() })
+    .set({ status: 'dead', diedAt: new Date(), deathReason: 'forced' })
     .where(and(eq(phones.id, phoneId), eq(phones.status, 'active')))
     .returning({ imei: phones.imeiLast4 });
   if (upd.length === 0) {

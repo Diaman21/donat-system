@@ -51,10 +51,17 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   });
 
   const label = ph.label ? ` «${ph.label}»` : '';
+  const reasonLine =
+    ph.deathReason === 'error'
+      ? 'Причина: ❌ ошибка Apple (достиг предела)'
+      : ph.deathReason === 'forced'
+        ? 'Причина: 🔄 вынужденный вывод (возврат бюджета)'
+        : '';
   return [
     `🪦 Итог по телефону …${ph.imeiLast4}${label}`,
     `Подключён: ${fmtMsk(ph.connectedAt)}`,
     ph.diedAt ? `Умер: ${fmtMsk(ph.diedAt)}` : '',
+    reasonLine,
     `Прожил: ${cnt} покупок на $${total.toFixed(2)} за ${fmtSpan(span)}`,
     cnt > 0 ? '' : null,
     cnt > 0 ? (omitted > 0 ? `Последние ${TIMELINE} покупок:` : 'Все покупки:') : '',

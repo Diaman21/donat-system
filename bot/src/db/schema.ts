@@ -67,6 +67,7 @@ export const phones = pgTable('phones', {
   operatorId: uuid('operator_id'),
   connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
   diedAt: timestamp('died_at', { withTimezone: true }),
+  deathReason: text('death_reason'), // 'error' (Apple) | 'forced' (вынужденный вывод)
   notes: text('notes'),
   deathPurchaseId: uuid('death_purchase_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

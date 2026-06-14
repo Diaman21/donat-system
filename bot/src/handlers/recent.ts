@@ -101,7 +101,7 @@ export async function confirmDeleteLast(ctx: AppContext): Promise<void> {
     try {
       await db
         .update(phones)
-        .set({ status: 'active', diedAt: null })
+        .set({ status: 'active', diedAt: null, deathReason: null })
         .where(eq(phones.id, last.phoneId));
       note = `\n♻️ Телефон …${last.imei} снова активен.`;
     } catch {

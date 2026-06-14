@@ -135,6 +135,7 @@ erDiagram
 | `operator_id` | `uuid` → `users.id` | за кем телефон |
 | `connected_at` | `timestamptz` | когда подключён в строй |
 | `died_at` | `timestamptz` | когда умер (NULL пока жив) |
+| `death_reason` | `text` | `'error'` (ошибка Apple = предел) / `'forced'` (вынужденный вывод, возврат бюджета). Миграция `0004` |
 | `death_purchase_id` | `uuid` → `purchases.id` | какая покупка убила |
 | `notes` | `text` | заметки оператора |
 
