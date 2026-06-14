@@ -1,7 +1,7 @@
-import { sql, type SQL } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases } from '../db/schema.js';
+import { phones, purchases, users } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
@@ -98,6 +98,41 @@ export async function renderStats(
     longestLine = `…${imei}: ${longest.cnt} покупок на ${money(Number(longest.total))}`;
   }
 
+  // Разбивка по играм (с учётом периода)
+  const byGameQuery = db
+    .select({
+      game: purchases.game,
+      cnt: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+    })
+    .from(purchases)
+    .groupBy(purchases.game);
+  const byGame = await (filter ? byGameQuery.where(filter) : byGameQuery);
+  const gameLines =
+    byGame.length > 0
+      ? byGame
+          .sort((a, b) => Number(b.total) - Number(a.total))
+          .map((g) => `  • ${g.game ?? 'без игры'}: ${money(Number(g.total))} (${g.cnt})`)
+      : ['  —'];
+
+  // Разбивка по операторам (с учётом периода)
+  const byOperatorQuery = db
+    .select({
+      username: users.username,
+      cnt: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+    })
+    .from(purchases)
+    .innerJoin(users, eq(users.id, purchases.operatorId))
+    .groupBy(users.username);
+  const byOperator = await (filter ? byOperatorQuery.where(filter) : byOperatorQuery);
+  const operatorLines =
+    byOperator.length > 0
+      ? byOperator
+          .sort((a, b) => Number(b.total) - Number(a.total))
+          .map((o) => `  • @${o.username ?? '—'}: ${money(Number(o.total))} (${o.cnt})`)
+      : ['  —'];
+
   const text = [
     `📊 Статистика (${PERIOD_TITLE[period]})`,
     '',
@@ -107,6 +142,12 @@ export async function renderStats(
     `📱 Телефоны (сейчас): ${active} активных · ${dead} умерло`,
     `🪦 Средний возраст до 💀: ${avgDeathLine}`,
     `🔥 Самая длинная серия: ${longestLine}`,
+    '',
+    '🎮 По играм:',
+    ...gameLines,
+    '',
+    '👤 По операторам:',
+    ...operatorLines,
   ].join('\n');
 
   return { text, kb: periodKeyboard(period) };
