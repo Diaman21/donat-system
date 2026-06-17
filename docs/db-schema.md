@@ -171,6 +171,7 @@ erDiagram
 | `amount` | `numeric(12,2)` CHECK > 0 | сумма $ (реально потрачено через Apple Pay) |
 | `result` | `purchase_result` | ✅ `done` / ⚠️ `support` / 💀 `long` |
 | `game` | `text` nullable | игра (напр. «Массив»), опционально — миграция `0002` |
+| `internet` | `text` nullable | `'mobile'` / `'wifi'` — тип интернета, аргумент коридора. Миграция `0005` |
 | `purchased_at` | `timestamptz` | **точное время покупки** (главное для аналитики) |
 | `notes` | `text` | заметки оператора |
 

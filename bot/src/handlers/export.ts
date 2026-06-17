@@ -24,6 +24,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       game: purchases.game,
       imei: phones.imeiLast4,
       operator: users.username,
+      internet: purchases.internet,
       notes: purchases.notes,
     })
     .from(purchases)
@@ -36,7 +37,16 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
     return;
   }
 
-  const header = ['Время (МСК)', 'Телефон', 'Игра', 'Сумма $', 'Результат', 'Оператор', 'Заметка'];
+  const header = [
+    'Время (МСК)',
+    'Телефон',
+    'Игра',
+    'Сумма $',
+    'Результат',
+    'Интернет',
+    'Оператор',
+    'Заметка',
+  ];
   const lines = [header.join(';')];
   for (const r of rows) {
     const cells = [
@@ -45,6 +55,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       r.game ?? '',
       r.amount,
       r.result,
+      r.internet ?? '',
       r.operator ?? '',
       r.notes ?? '',
     ];

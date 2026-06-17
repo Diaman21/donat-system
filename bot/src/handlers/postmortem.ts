@@ -31,6 +31,7 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
       at: purchases.purchasedAt,
       game: purchases.game,
       notes: purchases.notes,
+      internet: purchases.internet,
     })
     .from(purchases)
     .where(eq(purchases.phoneId, phoneId))
@@ -46,8 +47,9 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const omitted = cnt - last.length;
   const timeline = last.map((p) => {
     const g = p.game ? ` ${p.game}` : '';
+    const net = p.internet === 'mobile' ? ' 📶' : p.internet === 'wifi' ? ' 📡' : '';
     const note = p.notes ? `\n      📝 ${p.notes}` : '';
-    return `  ${fmtMsk(p.at)} ${emoji(p.result)} $${p.amount}${g}${note}`;
+    return `  ${fmtMsk(p.at)} ${emoji(p.result)} $${p.amount}${g}${net}${note}`;
   });
 
   const label = ph.label ? ` «${ph.label}»` : '';

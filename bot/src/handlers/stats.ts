@@ -128,6 +128,25 @@ export async function renderStats(
           .map((g) => `  • ${g.game ?? 'без игры'}: ${money(Number(g.total))} (${g.cnt})`)
       : ['  —'];
 
+  // Разбивка по типу интернета (с учётом периода) — аргумент коридора
+  const byNetQuery = db
+    .select({
+      internet: purchases.internet,
+      cnt: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+    })
+    .from(purchases)
+    .groupBy(purchases.internet);
+  const byNet = await (filter ? byNetQuery.where(filter) : byNetQuery);
+  const netLabel = (n: string | null) =>
+    n === 'mobile' ? '📶 моб.' : n === 'wifi' ? '📡 Wi-Fi' : '— не указан';
+  const netLines =
+    byNet.length > 0
+      ? byNet
+          .sort((a, b) => Number(b.total) - Number(a.total))
+          .map((n) => `  • ${netLabel(n.internet)}: ${money(Number(n.total))} (${n.cnt})`)
+      : ['  —'];
+
   // Разбивка по операторам (с учётом периода)
   const byOperatorQuery = db
     .select({
@@ -158,6 +177,9 @@ export async function renderStats(
     '',
     '🎮 По играм:',
     ...gameLines,
+    '',
+    '🌐 По интернету:',
+    ...netLines,
     '',
     '👤 По операторам:',
     ...operatorLines,

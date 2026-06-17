@@ -27,7 +27,7 @@ import {
   onResultSelected,
   onNoteRequest,
   onPurchaseNote,
-  onConfirmSave,
+  onNetSelected,
   CB,
 } from './handlers/purchase.js';
 import {
@@ -129,7 +129,7 @@ export function createBot(): Bot<AppContext> {
         return void (await onAmountSelected(ctx, data.slice(CB.amount.length)));
       }
       if (data === CB.note) return void (await onNoteRequest(ctx));
-      if (data === CB.save) return void (await onConfirmSave(ctx));
+      if (data.startsWith(CB.net)) return void (await onNetSelected(ctx, data.slice(CB.net.length)));
       if (data.startsWith(CB.result)) {
         return void (await onResultSelected(ctx, data.slice(CB.result.length) as PurchaseResultValue));
       }

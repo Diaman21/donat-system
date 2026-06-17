@@ -100,6 +100,7 @@ export const purchases = pgTable('purchases', {
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
   result: purchaseResult('result').notNull(),
   game: text('game'), // игра (напр. «Массив»), опционально — миграция 0002
+  internet: text('internet'), // 'mobile' | 'wifi' — тип интернета, миграция 0005
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

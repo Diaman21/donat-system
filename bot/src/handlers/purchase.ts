@@ -16,7 +16,7 @@ export const CB = {
   amount: 'pur:amt:', // + число | 'custom'
   result: 'pur:res:', // + done|support|long
   note: 'pur:note', // добавить/изменить заметку (точное совпадение)
-  save: 'pur:save', // подтвердить запись (точное совпадение)
+  net: 'pur:net:', // + mobile|wifi — выбор интернета = запись покупки
 } as const;
 
 // Игры для выбора при закупке
@@ -209,12 +209,19 @@ async function showConfirm(ctx: AppContext): Promise<void> {
     .join('\n');
 
   const kb = new InlineKeyboard()
-    .text('✅ Записать', CB.save)
+    .text('📶 Моб. интернет', `${CB.net}mobile`)
+    .text('📡 Wi-Fi', `${CB.net}wifi`)
+    .row()
     .text(flow.note ? '📝 Изменить заметку' : '📝 Заметка', CB.note)
     .row()
     .text('✖️ Отмена', CANCEL_CB);
-  await ctx.reply(summary, { reply_markup: kb });
+  await ctx.reply(`${summary}\n\nВыбери интернет — это запишет закупку:`, { reply_markup: kb });
 }
+
+const INTERNET_LABEL: Record<string, string> = {
+  mobile: '📶 моб. интернет',
+  wifi: '📡 Wi-Fi',
+};
 
 // «📝 Заметка» — запросить текст заметки.
 export async function onNoteRequest(ctx: AppContext): Promise<void> {
@@ -250,8 +257,8 @@ export async function onPurchaseNote(ctx: AppContext, text: string): Promise<voi
   await showConfirm(ctx);
 }
 
-// Шаг 6: подтверждено → сохраняем покупку (с заметкой).
-export async function onConfirmSave(ctx: AppContext): Promise<void> {
+// Шаг 6: выбран интернет → сохраняем покупку (с заметкой и типом интернета).
+export async function onNetSelected(ctx: AppContext, net: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_confirm') {
     await ctx.reply('Сессия ввода истекла. Начни заново: «➕ Закупка».', {
@@ -261,6 +268,7 @@ export async function onConfirmSave(ctx: AppContext): Promise<void> {
   }
   const user = ctx.dbUser;
   if (!user) return;
+  const internet = net === 'mobile' || net === 'wifi' ? net : null;
 
   const cat = await db
     .select()
@@ -282,6 +290,7 @@ export async function onConfirmSave(ctx: AppContext): Promise<void> {
     result: flow.result,
     game: flow.game,
     notes: flow.note,
+    internet,
   });
 
   const { phoneId, result, amount, game, note } = flow;
@@ -291,6 +300,7 @@ export async function onConfirmSave(ctx: AppContext): Promise<void> {
     `✅ Записано: ${RESULT_LABEL[result]}`,
     `Сумма: $${amount}`,
     game ? `Игра: ${game}` : null,
+    internet ? `Интернет: ${INTERNET_LABEL[internet]}` : null,
     note ? `📝 ${note}` : null,
   ].filter(Boolean);
 

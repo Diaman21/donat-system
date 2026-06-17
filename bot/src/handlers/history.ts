@@ -57,6 +57,7 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
       game: purchases.game,
       at: purchases.purchasedAt,
       notes: purchases.notes,
+      internet: purchases.internet,
     })
     .from(purchases)
     .where(eq(purchases.phoneId, phoneId))
@@ -83,8 +84,9 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
 
   const lines = shown.map((p) => {
     const g = p.game ? ` ${p.game}` : '';
+    const net = p.internet === 'mobile' ? ' 📶' : p.internet === 'wifi' ? ' 📡' : '';
     const note = p.notes ? `\n    📝 ${p.notes}` : '';
-    return `${fmtMsk(p.at)} ${EMOJI[p.result]} $${p.amount}${g}${note}`;
+    return `${fmtMsk(p.at)} ${EMOJI[p.result]} $${p.amount}${g}${net}${note}`;
   });
 
   const tail = omitted > 0 ? ['', `…и ещё ${omitted} ранее (показаны последние ${MAX_ITEMS}).`] : [];
