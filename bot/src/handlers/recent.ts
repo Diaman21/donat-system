@@ -29,6 +29,7 @@ export async function showRecent(ctx: AppContext): Promise<void> {
       game: purchases.game,
       purchasedAt: purchases.purchasedAt,
       imei: phones.imeiLast4,
+      label: phones.label,
       username: users.username,
     })
     .from(purchases)
@@ -44,7 +45,8 @@ export async function showRecent(ctx: AppContext): Promise<void> {
 
   const lines = rows.map((r) => {
     const g = r.game ? ` ${r.game}` : '';
-    return `${RESULT_EMOJI[r.result]} €${r.amount} …${r.imei}${g} · @${r.username ?? '—'} · ${fmtTime(r.purchasedAt)}`;
+    const ph = `…${r.imei}${r.label ? ` (${r.label})` : ''}`;
+    return `${RESULT_EMOJI[r.result]} €${r.amount} ${ph}${g} · @${r.username ?? '—'} · ${fmtTime(r.purchasedAt)}`;
   });
 
   await ctx.reply(['🧾 Последние закупки:', '', ...lines].join('\n'));
