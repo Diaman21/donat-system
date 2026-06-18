@@ -95,19 +95,29 @@ export async function onGameSelected(ctx: AppContext, gameValue: string): Promis
     game,
   };
 
-  // Быстрые суммы из denominations категории
+  // Быстрые суммы из denominations категории.
+  // game_donate: числа [2,30,100] (€). vk_votes: [{units,price}] (голоса · €).
   const cat = await db
     .select({ denominations: purchaseCategories.denominations })
     .from(purchaseCategories)
     .where(eq(purchaseCategories.code, flow.categoryCode))
     .limit(1);
   const raw = cat[0]?.denominations;
-  const denoms = Array.isArray(raw) ? (raw as number[]) : [];
+  const denoms = Array.isArray(raw) ? raw : [];
 
   const kb = new InlineKeyboard();
-  for (const d of denoms) kb.text(`$${d}`, `${CB.amount}${d}`);
+  let isVk = false;
+  for (const d of denoms) {
+    if (typeof d === 'number') {
+      kb.text(`€${d}`, `${CB.amount}${d}`);
+    } else if (d && typeof d === 'object' && 'price' in d && 'units' in d) {
+      const o = d as { units: number; price: number };
+      kb.text(`${o.units} голосов · €${o.price}`, `${CB.amount}${o.price}:${o.units}`).row();
+      isVk = true;
+    }
+  }
   kb.row().text('✏️ Другая сумма', `${CB.amount}custom`).row().text('✖️ Отмена', CANCEL_CB);
-  await ctx.reply('Сколько $ потрачено?', { reply_markup: kb });
+  await ctx.reply(isVk ? 'Сколько голосов купил?' : 'Сколько € потрачено?', { reply_markup: kb });
 }
 
 // Шаг 4a: выбрана быстрая сумма (или «Другая») кнопкой.
@@ -116,15 +126,18 @@ export async function onAmountSelected(ctx: AppContext, value: string): Promise<
   if (flow?.kind !== 'purchase_amount') return;
 
   if (value === 'custom') {
-    await ctx.reply('Введи сумму $ числом (напр. 30):', { reply_markup: cancelKb() });
+    await ctx.reply('Введи сумму € числом (напр. 30):', { reply_markup: cancelKb() });
     return; // flow остаётся purchase_amount — ждём текст
   }
-  const n = Number(value);
+  // value может быть "0.99:10" (цена:голоса для ВК) или "30" (€ для игр)
+  const [priceStr, unitsStr] = value.split(':');
+  const n = Number(priceStr);
   if (!Number.isFinite(n) || n <= 0) return;
-  await askResult(ctx, n.toFixed(2));
+  const units = unitsStr ? Number(unitsStr) : null;
+  await askResult(ctx, n.toFixed(2), Number.isFinite(units) ? units : null);
 }
 
-// Шаг 4b: «своя» сумма текстом.
+// Шаг 4b: «своя» сумма текстом (€, без голосов).
 export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_amount') return;
@@ -136,11 +149,11 @@ export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<v
     });
     return;
   }
-  await askResult(ctx, n.toFixed(2));
+  await askResult(ctx, n.toFixed(2), null);
 }
 
 // Переход к выбору результата (общий для быстрой суммы и текстового ввода).
-async function askResult(ctx: AppContext, amount: string): Promise<void> {
+async function askResult(ctx: AppContext, amount: string, units: number | null): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_amount') return;
   ctx.session.flow = {
@@ -149,6 +162,7 @@ async function askResult(ctx: AppContext, amount: string): Promise<void> {
     categoryCode: flow.categoryCode,
     game: flow.game,
     amount,
+    units,
   };
   const kb = new InlineKeyboard()
     .text(RESULT_LABEL.done, `${CB.result}done`)
@@ -158,7 +172,7 @@ async function askResult(ctx: AppContext, amount: string): Promise<void> {
     .text(RESULT_LABEL.long, `${CB.result}long`)
     .row()
     .text('✖️ Отмена', CANCEL_CB);
-  await ctx.reply(`Сумма $${amount}. Результат?`, { reply_markup: kb });
+  await ctx.reply(`Сумма €${amount}. Результат?`, { reply_markup: kb });
 }
 
 // Шаг 5: выбран результат → показываем сводку на подтверждение.
@@ -177,6 +191,7 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     categoryCode: flow.categoryCode,
     game: flow.game,
     amount: flow.amount,
+    units: flow.units,
     result,
     note: null,
   };
@@ -201,7 +216,8 @@ async function showConfirm(ctx: AppContext): Promise<void> {
     '',
     `📱 …${imei}`,
     `🗂 ${catLabel}${flow.game ? ` · ${flow.game}` : ''}`,
-    `💵 $${flow.amount}`,
+    flow.units ? `🗳 ${flow.units} голосов` : null,
+    `💵 €${flow.amount}`,
     `Результат: ${RESULT_LABEL[flow.result]}`,
     flow.note ? `📝 ${flow.note}` : null,
   ]
@@ -233,6 +249,7 @@ export async function onNoteRequest(ctx: AppContext): Promise<void> {
     categoryCode: flow.categoryCode,
     game: flow.game,
     amount: flow.amount,
+    units: flow.units,
     result: flow.result,
   };
   await ctx.reply('Напиши заметку по закупке (логи, детали, что с саппортом и т.п.):', {
@@ -251,6 +268,7 @@ export async function onPurchaseNote(ctx: AppContext, text: string): Promise<voi
     categoryCode: flow.categoryCode,
     game: flow.game,
     amount: flow.amount,
+    units: flow.units,
     result: flow.result,
     note,
   };
@@ -291,14 +309,16 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     game: flow.game,
     notes: flow.note,
     internet,
+    units: flow.units,
   });
 
-  const { phoneId, result, amount, game, note } = flow;
+  const { phoneId, result, amount, game, note, units } = flow;
   ctx.session.flow = undefined;
 
   const parts = [
     `✅ Записано: ${RESULT_LABEL[result]}`,
-    `Сумма: $${amount}`,
+    units ? `🗳 ${units} голосов` : null,
+    `Сумма: €${amount}`,
     game ? `Игра: ${game}` : null,
     internet ? `Интернет: ${INTERNET_LABEL[internet]}` : null,
     note ? `📝 ${note}` : null,

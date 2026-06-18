@@ -172,6 +172,7 @@ erDiagram
 | `result` | `purchase_result` | ✅ `done` / ⚠️ `support` / 💀 `long` |
 | `game` | `text` nullable | игра (напр. «Массив»), опционально — миграция `0002` |
 | `internet` | `text` nullable | `'mobile'` / `'wifi'` — тип интернета, аргумент коридора. Миграция `0005` |
+| `units` | `integer` nullable | кол-во единиц (для ВК — голоса). Миграция `0006` |
 | `purchased_at` | `timestamptz` | **точное время покупки** (главное для аналитики) |
 | `notes` | `text` | заметки оператора |
 

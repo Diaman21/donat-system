@@ -16,7 +16,7 @@ const PERIOD_TITLE: Record<StatsPeriod, string> = {
 };
 
 function money(n: number): string {
-  return `$${n.toFixed(2)}`;
+  return `€${n.toFixed(2)}`;
 }
 
 function periodFilter(period: StatsPeriod): SQL | undefined {
@@ -61,6 +61,13 @@ export async function renderStats(
     else if (r.result === 'support') support = r.cnt;
     else if (r.result === 'long') long = r.cnt;
   }
+
+  // Всего голосов ВК куплено (с учётом периода)
+  const votesQuery = db
+    .select({ votes: sql<number>`coalesce(sum(${purchases.units}), 0)::int` })
+    .from(purchases);
+  const votesRes = await (filter ? votesQuery.where(filter) : votesQuery);
+  const totalVotes = votesRes[0]?.votes ?? 0;
 
   // Телефоны и «возраст до 💀» — по всему времени (текущее состояние парка)
   const allPhones = await db
@@ -170,6 +177,7 @@ export async function renderStats(
     '',
     `💵 Потрачено: ${money(totalSpent)}`,
     `🛒 Покупок: ${totalCnt}  (✅ ${done} · ⚠️ ${support} · 💀 ${long})`,
+    totalVotes > 0 ? `🗳 Голосов ВК куплено: ${totalVotes}` : null,
     '',
     `📱 Телефоны (сейчас): ${active} активных · ${dead} умерло (❌ ${deadError} ошибка · 🔄 ${deadForced} вынужд.)`,
     `🪦 Средний возраст до 💀: ${avgDeathLine}`,
@@ -183,7 +191,9 @@ export async function renderStats(
     '',
     '👤 По операторам:',
     ...operatorLines,
-  ].join('\n');
+  ]
+    .filter((l) => l !== null)
+    .join('\n');
 
   return { text, kb: periodKeyboard(period) };
 }

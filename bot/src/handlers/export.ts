@@ -25,6 +25,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       imei: phones.imeiLast4,
       operator: users.username,
       internet: purchases.internet,
+      units: purchases.units,
       notes: purchases.notes,
     })
     .from(purchases)
@@ -41,7 +42,8 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
     'Время (МСК)',
     'Телефон',
     'Игра',
-    'Сумма $',
+    'Сумма €',
+    'Голоса',
     'Результат',
     'Интернет',
     'Оператор',
@@ -54,6 +56,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
       `…${r.imei}`,
       r.game ?? '',
       r.amount,
+      r.units ?? '',
       r.result,
       r.internet ?? '',
       r.operator ?? '',

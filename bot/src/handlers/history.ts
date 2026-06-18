@@ -58,6 +58,7 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
       at: purchases.purchasedAt,
       notes: purchases.notes,
       internet: purchases.internet,
+      units: purchases.units,
     })
     .from(purchases)
     .where(eq(purchases.phoneId, phoneId))
@@ -69,7 +70,7 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
 
   const head = [
     `📜 История …${ph.imeiLast4}${label} — ${statusLabel}`,
-    `Всего: ${items.length} покупок на $${total.toFixed(2)}`,
+    `Всего: ${items.length} покупок на €${total.toFixed(2)}`,
     '',
   ];
 
@@ -84,9 +85,10 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
 
   const lines = shown.map((p) => {
     const g = p.game ? ` ${p.game}` : '';
+    const v = p.units ? ` (${p.units} гол.)` : '';
     const net = p.internet === 'mobile' ? ' 📶' : p.internet === 'wifi' ? ' 📡' : '';
     const note = p.notes ? `\n    📝 ${p.notes}` : '';
-    return `${fmtMsk(p.at)} ${EMOJI[p.result]} $${p.amount}${g}${net}${note}`;
+    return `${fmtMsk(p.at)} ${EMOJI[p.result]} €${p.amount}${v}${g}${net}${note}`;
   });
 
   const tail = omitted > 0 ? ['', `…и ещё ${omitted} ранее (показаны последние ${MAX_ITEMS}).`] : [];

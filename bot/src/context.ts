@@ -16,6 +16,7 @@ export type FlowState =
       categoryCode: string;
       game: string | null;
       amount: string;
+      units: number | null;
     }
   | {
       kind: 'purchase_note';
@@ -23,6 +24,7 @@ export type FlowState =
       categoryCode: string;
       game: string | null;
       amount: string;
+      units: number | null;
       result: PurchaseResultValue;
     }
   | {
@@ -31,6 +33,7 @@ export type FlowState =
       categoryCode: string;
       game: string | null;
       amount: string;
+      units: number | null;
       result: PurchaseResultValue;
       note: string | null;
     };

@@ -44,7 +44,7 @@ export async function showRecent(ctx: AppContext): Promise<void> {
 
   const lines = rows.map((r) => {
     const g = r.game ? ` ${r.game}` : '';
-    return `${RESULT_EMOJI[r.result]} $${r.amount} …${r.imei}${g} · @${r.username ?? '—'} · ${fmtTime(r.purchasedAt)}`;
+    return `${RESULT_EMOJI[r.result]} €${r.amount} …${r.imei}${g} · @${r.username ?? '—'} · ${fmtTime(r.purchasedAt)}`;
   });
 
   await ctx.reply(['🧾 Последние закупки:', '', ...lines].join('\n'));
@@ -66,7 +66,7 @@ export async function startDeleteLast(ctx: AppContext): Promise<void> {
   const g = last.game ? ` ${last.game}` : '';
   const kb = new InlineKeyboard().text('✅ Удалить', DELLAST_CB).text('✖️ Отмена', CANCEL_CB);
   await ctx.reply(
-    `Удалить твою последнюю закупку?\n\n${RESULT_EMOJI[last.result]} $${last.amount} …${last.imei}${g} · ${fmtTime(last.purchasedAt)}`,
+    `Удалить твою последнюю закупку?\n\n${RESULT_EMOJI[last.result]} €${last.amount} …${last.imei}${g} · ${fmtTime(last.purchasedAt)}`,
     { reply_markup: kb },
   );
 }
@@ -109,7 +109,7 @@ export async function confirmDeleteLast(ctx: AppContext): Promise<void> {
     }
   }
 
-  await ctx.reply(`🗑 Удалено: $${last.amount} …${last.imei}.${note}`, { reply_markup: mainMenu() });
+  await ctx.reply(`🗑 Удалено: €${last.amount} …${last.imei}.${note}`, { reply_markup: mainMenu() });
 }
 
 async function lastOwnPurchase(userId: string) {

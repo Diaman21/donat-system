@@ -9,6 +9,7 @@ import {
   timestamp,
   numeric,
   jsonb,
+  integer,
 } from 'drizzle-orm/pg-core';
 
 // ============================================================
@@ -101,6 +102,7 @@ export const purchases = pgTable('purchases', {
   result: purchaseResult('result').notNull(),
   game: text('game'), // игра (напр. «Массив»), опционально — миграция 0002
   internet: text('internet'), // 'mobile' | 'wifi' — тип интернета, миграция 0005
+  units: integer('units'), // кол-во единиц (для ВК — голоса), миграция 0006
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

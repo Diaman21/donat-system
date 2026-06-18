@@ -32,6 +32,7 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
       game: purchases.game,
       notes: purchases.notes,
       internet: purchases.internet,
+      units: purchases.units,
     })
     .from(purchases)
     .where(eq(purchases.phoneId, phoneId))
@@ -39,6 +40,7 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
 
   const cnt = all.length;
   const total = all.reduce((a, p) => a + Number(p.amount), 0);
+  const totalUnits = all.reduce((a, p) => a + (p.units ?? 0), 0);
   const end = ph.diedAt ?? new Date();
   const span = end.getTime() - ph.connectedAt.getTime();
 
@@ -47,9 +49,10 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const omitted = cnt - last.length;
   const timeline = last.map((p) => {
     const g = p.game ? ` ${p.game}` : '';
+    const v = p.units ? ` (${p.units} гол.)` : '';
     const net = p.internet === 'mobile' ? ' 📶' : p.internet === 'wifi' ? ' 📡' : '';
     const note = p.notes ? `\n      📝 ${p.notes}` : '';
-    return `  ${fmtMsk(p.at)} ${emoji(p.result)} $${p.amount}${g}${net}${note}`;
+    return `  ${fmtMsk(p.at)} ${emoji(p.result)} €${p.amount}${v}${g}${net}${note}`;
   });
 
   const label = ph.label ? ` «${ph.label}»` : '';
@@ -64,7 +67,8 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
     `Подключён: ${fmtMsk(ph.connectedAt)}`,
     ph.diedAt ? `Умер: ${fmtMsk(ph.diedAt)}` : '',
     reasonLine,
-    `Прожил: ${cnt} покупок на $${total.toFixed(2)} за ${fmtSpan(span)}`,
+    `Прожил: ${cnt} покупок на €${total.toFixed(2)} за ${fmtSpan(span)}`,
+    totalUnits > 0 ? `🗳 Всего голосов ВК куплено: ${totalUnits}` : null,
     cnt > 0 ? '' : null,
     cnt > 0 ? (omitted > 0 ? `Последние ${TIMELINE} покупок:` : 'Все покупки:') : '',
     ...timeline,
