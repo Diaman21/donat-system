@@ -81,7 +81,7 @@ erDiagram
 | Enum | Значения | Где используется |
 |---|---|---|
 | `user_role` | `customer`, `operator`, `moderator` | `users.role` |
-| `phone_status` | `active`, `dead` | `phones.status` |
+| `phone_status` | `active`, `dead`, `prepared` | `phones.status` (prepared — резерв, не в лимите ≤3; миграция `0007`) |
 | `order_status` | `new`, `taken`, `in_progress`, `completed`, `cancelled` | `orders.status` |
 | `purchase_result` | `done` ✅, `support` ⚠️, `long` 💀 | `purchases.result` |
 

@@ -7,6 +7,7 @@ import type { User, PurchaseResultValue } from './db/schema.js';
 export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
+  | { kind: 'add_phone_dest'; imei: string; label: string | null }
   | { kind: 'purchase_category'; phoneId: string }
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
   | { kind: 'purchase_amount'; phoneId: string; categoryCode: string; game: string | null }

@@ -12,6 +12,8 @@ import { fmtMsk } from '../format.js';
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
 export const ADDPH_CB = 'addph:'; // подтвердить привязку при повторе 4 цифр (+ imei)
+export const DEST_CB = 'dest:'; // назначение нового телефона (+ active|prepared)
+export const PREP_CB = 'prep:'; // подготовленный → в работу (+ phoneId)
 
 // «➕ Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
@@ -86,36 +88,114 @@ export async function onAddPhoneConfirm(ctx: AppContext, imei: string): Promise<
   await ctx.reply('Метка телефона (напр. «красный 11») или /skip:', { reply_markup: cancelKb() });
 }
 
-// Шаг 2: метка (или /skip) → создаём телефон.
+// Шаг 2: метка (или /skip) → выбор назначения (в работу / подготовленные).
 export async function onAddPhoneLabel(ctx: AppContext, text: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'add_phone_label') return;
-  const user = ctx.dbUser;
-  if (!user) return;
 
   const label = text.trim() === '/skip' ? null : text.trim();
+  ctx.session.flow = { kind: 'add_phone_dest', imei: flow.imei, label };
+
+  const kb = new InlineKeyboard()
+    .text('▶️ В работу (на закупки)', `${DEST_CB}active`)
+    .row()
+    .text('🧰 В подготовленные', `${DEST_CB}prepared`)
+    .row()
+    .text('✖️ Отмена', CANCEL_CB);
+  await ctx.reply(
+    'Куда добавить телефон?\n' +
+      '▶️ В работу — сразу на закупки (≤3 активных).\n' +
+      '🧰 Подготовленные — резерв (аккаунт/игры накачены, но пока не в работе).',
+    { reply_markup: kb },
+  );
+}
+
+// Шаг 3: выбрано назначение → создаём телефон с нужным статусом.
+export async function onAddPhoneDest(ctx: AppContext, dest: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'add_phone_dest') return;
+  const user = ctx.dbUser;
+  if (!user) return;
+  const status = dest === 'prepared' ? 'prepared' : 'active';
   ctx.session.flow = undefined;
 
   try {
     const rows = await db
       .insert(phones)
-      .values({ imeiLast4: flow.imei, label, operatorId: user.id })
+      .values({ imeiLast4: flow.imei, label: flow.label, operatorId: user.id, status })
       .returning();
     const p = rows[0]!;
-    await ctx.reply(`✅ Телефон привязан: …${p.imeiLast4}${p.label ? ` («${p.label}»)` : ''}`, {
+    const where = status === 'prepared' ? '🧰 в подготовленные' : '▶️ в работу';
+    await ctx.reply(
+      `✅ Телефон …${p.imeiLast4}${p.label ? ` («${p.label}»)` : ''} добавлен ${where}.`,
+      { reply_markup: mainMenu() },
+    );
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes('лимит активных') || msg.includes('max_active')) {
+      await ctx.reply(
+        '⚠️ Уже 3 активных телефона — в работу нельзя. Добавь в 🧰 подготовленные ' +
+          '(➕ Телефон заново) или сначала выведи активный.',
+        { reply_markup: mainMenu() },
+      );
+    } else if (msg.includes('phones_active_imei_unique')) {
+      await ctx.reply('⚠️ Телефон с такими 4 цифрами уже активен.', { reply_markup: mainMenu() });
+    } else {
+      console.error('Ошибка добавления телефона:', err);
+      await ctx.reply('Не удалось добавить телефон. Попробуй позже.', { reply_markup: mainMenu() });
+    }
+  }
+}
+
+// «🧰 Подготовленные» — резерв телефонов + кнопка ввода в работу.
+export async function listPrepared(ctx: AppContext): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+
+  const prep = await db
+    .select()
+    .from(phones)
+    .where(eq(phones.status, 'prepared'))
+    .orderBy(desc(phones.createdAt));
+  if (prep.length === 0) {
+    await ctx.reply('Подготовленных телефонов нет. Добавь через «➕ Телефон» → «🧰 В подготовленные».');
+    return;
+  }
+
+  const allowWork = ctx.chat?.type === 'private';
+  const lines = prep.map((p) => `🧰 …${p.imeiLast4}${p.label ? ` «${p.label}»` : ''}`);
+  const kb = new InlineKeyboard();
+  if (allowWork) {
+    for (const p of prep) kb.text(`▶️ В работу …${p.imeiLast4}`, `${PREP_CB}${p.id}`).row();
+  }
+  await ctx.reply(['🧰 Подготовленные телефоны:', '', ...lines].join('\n'), {
+    reply_markup: allowWork ? kb : undefined,
+  });
+}
+
+// «▶️ В работу» — перевод подготовленного телефона в активные (лимит ≤3).
+export async function onPreparedToWork(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+  try {
+    const upd = await db
+      .update(phones)
+      .set({ status: 'active', connectedAt: new Date() })
+      .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+      .returning({ imei: phones.imeiLast4 });
+    if (upd.length === 0) {
+      await ctx.reply('Телефон не найден среди подготовленных.', { reply_markup: mainMenu() });
+      return;
+    }
+    await ctx.reply(`▶️ Телефон …${upd[0]!.imei} введён в работу (отсчёт жизни — с этого момента).`, {
       reply_markup: mainMenu(),
     });
   } catch (err) {
     const msg = String(err);
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
-      await ctx.reply('⚠️ Уже 3 активных телефона — лимит. Сначала выведи один.', {
-        reply_markup: mainMenu(),
-      });
-    } else if (msg.includes('phones_active_imei_unique')) {
-      await ctx.reply('⚠️ Телефон с такими 4 цифрами уже активен.', { reply_markup: mainMenu() });
+      await ctx.reply('⚠️ Уже 3 активных телефона. Сначала выведи один.', { reply_markup: mainMenu() });
     } else {
-      console.error('Ошибка привязки телефона:', err);
-      await ctx.reply('Не удалось привязать телефон. Попробуй позже.', { reply_markup: mainMenu() });
+      console.error('Ошибка ввода в работу:', err);
+      await ctx.reply('Не удалось ввести в работу. Попробуй позже.', { reply_markup: mainMenu() });
     }
   }
 }

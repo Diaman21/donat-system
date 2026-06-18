@@ -23,7 +23,7 @@ import {
 
 // ---------- Enums ----------
 export const userRole = pgEnum('user_role', ['customer', 'operator', 'moderator']);
-export const phoneStatus = pgEnum('phone_status', ['active', 'dead']);
+export const phoneStatus = pgEnum('phone_status', ['active', 'dead', 'prepared']);
 export const orderStatus = pgEnum('order_status', [
   'new',
   'taken',

@@ -7,6 +7,7 @@ export const BTN = {
   purchase: '➕ Закупка',
   addPhone: '➕ Телефон',
   phones: '📱 Телефоны',
+  prepared: '🧰 Подготовленные',
   stats: '📊 Статистика',
   recent: '🧾 Последние',
   delLast: '↩️ Удалить последнюю',
@@ -25,6 +26,7 @@ export function mainMenu(): Keyboard {
     .row()
     .text(BTN.addPhone)
     .text(BTN.phones)
+    .text(BTN.prepared)
     .row()
     .text(BTN.stats)
     .text(BTN.recent)

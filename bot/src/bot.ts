@@ -12,12 +12,17 @@ import {
   onAddPhoneImei,
   onAddPhoneLabel,
   listPhones,
+  onAddPhoneDest,
+  listPrepared,
+  onPreparedToWork,
   onKillAsk,
   onKillConfirm,
   onAddPhoneConfirm,
   KILL_CB,
   KILLC_CB,
   ADDPH_CB,
+  DEST_CB,
+  PREP_CB,
 } from './handlers/phones.js';
 import {
   startPurchase,
@@ -88,6 +93,7 @@ export function createBot(): Bot<AppContext> {
   bot.hears(BTN.purchase, startPurchase);
   bot.hears(BTN.addPhone, startAddPhone);
   bot.hears(BTN.phones, listPhones);
+  bot.hears(BTN.prepared, listPrepared);
   bot.hears(BTN.stats, showStats);
   bot.hears(BTN.recent, showRecent);
   bot.hears(BTN.delLast, startDeleteLast);
@@ -120,6 +126,12 @@ export function createBot(): Bot<AppContext> {
       }
       if (data.startsWith(ADDPH_CB)) {
         return void (await onAddPhoneConfirm(ctx, data.slice(ADDPH_CB.length)));
+      }
+      if (data.startsWith(DEST_CB)) {
+        return void (await onAddPhoneDest(ctx, data.slice(DEST_CB.length)));
+      }
+      if (data.startsWith(PREP_CB)) {
+        return void (await onPreparedToWork(ctx, data.slice(PREP_CB.length)));
       }
       if (data.startsWith(CB.phone)) {
         return void (await onPhoneSelected(ctx, data.slice(CB.phone.length)));
