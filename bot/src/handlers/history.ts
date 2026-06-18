@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases, type PurchaseResultValue } from '../db/schema.js';
+import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { fmtMsk } from '../format.js';
@@ -59,20 +59,37 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
       notes: purchases.notes,
       internet: purchases.internet,
       units: purchases.units,
+      catCode: purchaseCategories.code,
     })
     .from(purchases)
+    .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
     .where(eq(purchases.phoneId, phoneId))
     .orderBy(asc(purchases.purchasedAt));
 
   const total = items.reduce((a, p) => a + Number(p.amount), 0);
-  const statusLabel = ph.status === 'active' ? 'активен' : 'умер';
+  const statusLabel =
+    ph.status === 'active' ? 'активен' : ph.status === 'prepared' ? 'подготовлен' : 'умер';
   const label = ph.label ? ` «${ph.label}»` : '';
+
+  // Разбивка по типу (танки / ВК) — методики разные
+  const sumBy = (code: string) => {
+    const rows = items.filter((p) => p.catCode === code);
+    return {
+      c: rows.length,
+      sum: rows.reduce((a, p) => a + Number(p.amount), 0),
+      votes: rows.reduce((a, p) => a + (p.units ?? 0), 0),
+    };
+  };
+  const tanks = sumBy('game_donate');
+  const vk = sumBy('vk_votes');
 
   const head = [
     `📜 История …${ph.imeiLast4}${label} — ${statusLabel}`,
     `Всего: ${items.length} покупок на €${total.toFixed(2)}`,
+    tanks.c > 0 ? `🎮 Танки: ${tanks.c} покупок на €${tanks.sum.toFixed(2)}` : null,
+    vk.c > 0 ? `🗳 ВК: ${vk.c} покупок на €${vk.sum.toFixed(2)} (${vk.votes} голосов)` : null,
     '',
-  ];
+  ].filter((l) => l !== null) as string[];
 
   if (items.length === 0) {
     await ctx.reply([...head, 'Покупок не было.'].join('\n'));

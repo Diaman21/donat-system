@@ -8,6 +8,7 @@ import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
 import { fmtMsk } from '../format.js';
+import { HIST_CB } from './history.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
@@ -231,12 +232,13 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     const total = s?.total ?? '0';
     const label = p.label ? ` «${p.label}»` : '';
     lines.push(`📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок`);
-    if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`).row();
+    // у каждого: подробная инфо (история+разбивка) и вывод
+    kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);
+    if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`);
+    kb.row();
   }
 
-  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), {
-    reply_markup: allowKill ? kb : undefined,
-  });
+  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), { reply_markup: kb });
 }
 
 // Спросить подтверждение ручного вывода телефона.
