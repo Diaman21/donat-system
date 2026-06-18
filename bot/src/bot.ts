@@ -14,8 +14,10 @@ import {
   listPhones,
   onKillAsk,
   onKillConfirm,
+  onAddPhoneConfirm,
   KILL_CB,
   KILLC_CB,
+  ADDPH_CB,
 } from './handlers/phones.js';
 import {
   startPurchase,
@@ -115,6 +117,9 @@ export function createBot(): Bot<AppContext> {
       if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
       if (data.startsWith(HIST_CB)) {
         return void (await showPhoneHistory(ctx, data.slice(HIST_CB.length)));
+      }
+      if (data.startsWith(ADDPH_CB)) {
+        return void (await onAddPhoneConfirm(ctx, data.slice(ADDPH_CB.length)));
       }
       if (data.startsWith(CB.phone)) {
         return void (await onPhoneSelected(ctx, data.slice(CB.phone.length)));

@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases } from '../db/schema.js';
@@ -7,9 +7,11 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
+import { fmtMsk } from '../format.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
+export const ADDPH_CB = 'addph:'; // подтвердить привязку при повторе 4 цифр (+ imei)
 
 // «➕ Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
@@ -27,6 +29,7 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     return;
   }
 
+  // активный дубль — нельзя (триггер БД тоже не даст 2 активных с одним IMEI)
   const dup = await db
     .select({ id: phones.id })
     .from(phones)
@@ -40,8 +43,47 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     return;
   }
 
+  // те же 4 цифры уже были в истории (умершие) — предупреждаем, но не блокируем
+  const past = await db
+    .select({ label: phones.label, diedAt: phones.diedAt, deathReason: phones.deathReason })
+    .from(phones)
+    .where(and(eq(phones.imeiLast4, imei), eq(phones.status, 'dead')))
+    .orderBy(desc(phones.diedAt));
+  if (past.length > 0) {
+    const p = past[0]!;
+    const reason =
+      p.deathReason === 'error'
+        ? 'ошибка Apple'
+        : p.deathReason === 'forced'
+          ? 'вынужденный вывод'
+          : '—';
+    const when = p.diedAt ? fmtMsk(p.diedAt) : '—';
+    const lbl = p.label ? ` «${p.label}»` : '';
+    const more = past.length > 1 ? ` Всего таких в истории: ${past.length}.` : '';
+    const kb = new InlineKeyboard()
+      .text('✅ Это новый аппарат — привязать', `${ADDPH_CB}${imei}`)
+      .row()
+      .text('✖️ Отмена', CANCEL_CB);
+    await ctx.reply(
+      `⚠️ На …${imei} уже работали${lbl}: умер ${when} (${reason}).${more}\n\n` +
+        'Последние 4 цифры IMEI могут совпадать у разных аппаратов. ' +
+        'Это тот же телефон или новый с теми же цифрами?',
+      { reply_markup: kb },
+    );
+    return; // ждём подтверждения кнопкой
+  }
+
   ctx.session.flow = { kind: 'add_phone_label', imei };
   await ctx.reply('Метка телефона (напр. «синий iPhone») или /skip:', { reply_markup: cancelKb() });
+}
+
+// Подтверждение привязки при повторе 4 цифр → переходим к метке.
+export async function onAddPhoneConfirm(ctx: AppContext, imei: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+  if (!/^\d{4}$/.test(imei)) return;
+  ctx.session.flow = { kind: 'add_phone_label', imei };
+  await ctx.reply('Метка телефона (напр. «красный 11») или /skip:', { reply_markup: cancelKb() });
 }
 
 // Шаг 2: метка (или /skip) → создаём телефон.
