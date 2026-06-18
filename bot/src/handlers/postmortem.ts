@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { phones, purchases, type PurchaseResultValue } from '../db/schema.js';
+import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
 import { fmtMsk } from '../format.js';
 
 function fmtSpan(ms: number): string {
@@ -33,8 +33,10 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
       notes: purchases.notes,
       internet: purchases.internet,
       units: purchases.units,
+      catCode: purchaseCategories.code,
     })
     .from(purchases)
+    .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
     .where(eq(purchases.phoneId, phoneId))
     .orderBy(desc(purchases.purchasedAt));
 
@@ -43,6 +45,17 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const totalUnits = all.reduce((a, p) => a + (p.units ?? 0), 0);
   const end = ph.diedAt ?? new Date();
   const span = end.getTime() - ph.connectedAt.getTime();
+
+  // Раздельно по типу (методики танков и ВК разные)
+  const sumBy = (code: string) => {
+    const rows = all.filter((p) => p.catCode === code);
+    const c = rows.length;
+    const sum = rows.reduce((a, p) => a + Number(p.amount), 0);
+    const votes = rows.reduce((a, p) => a + (p.units ?? 0), 0);
+    return { c, sum, votes };
+  };
+  const tanks = sumBy('game_donate');
+  const vk = sumBy('vk_votes');
 
   // последние покупки в хронологическом порядке — с датой/временем (МСК)
   const last = all.slice(0, TIMELINE).reverse();
@@ -68,7 +81,8 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
     ph.diedAt ? `Умер: ${fmtMsk(ph.diedAt)}` : '',
     reasonLine,
     `Прожил: ${cnt} покупок на €${total.toFixed(2)} за ${fmtSpan(span)}`,
-    totalUnits > 0 ? `🗳 Всего голосов ВК куплено: ${totalUnits}` : null,
+    tanks.c > 0 ? `🎮 Танки: ${tanks.c} покупок на €${tanks.sum.toFixed(2)}` : null,
+    vk.c > 0 ? `🗳 ВК: ${vk.c} покупок на €${vk.sum.toFixed(2)} (${vk.votes} голосов)` : null,
     cnt > 0 ? '' : null,
     cnt > 0 ? (omitted > 0 ? `Последние ${TIMELINE} покупок:` : 'Все покупки:') : '',
     ...timeline,

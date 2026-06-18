@@ -1,7 +1,7 @@
 import { eq, sql, type SQL } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases, users } from '../db/schema.js';
+import { phones, purchases, purchaseCategories, users } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
@@ -118,6 +118,30 @@ export async function renderStats(
     longestLine = `…${imei}: ${longest.cnt} покупок на ${money(Number(longest.total))}`;
   }
 
+  // Разбивка ПО ТИПУ (🎮 Танки / 🗳 ВК) — методики разные, считаем раздельно
+  const byCatQuery = db
+    .select({
+      code: purchaseCategories.code,
+      cnt: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      votes: sql<number>`coalesce(sum(${purchases.units}), 0)::int`,
+    })
+    .from(purchases)
+    .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
+    .groupBy(purchaseCategories.code);
+  const byCat = await (filter ? byCatQuery.where(filter) : byCatQuery);
+  const catName = (c: string) =>
+    c === 'game_donate' ? '🎮 Танки' : c === 'vk_votes' ? '🗳 ВК' : c;
+  const catLines =
+    byCat.length > 0
+      ? byCat
+          .sort((a, b) => Number(b.total) - Number(a.total))
+          .map((c) => {
+            const v = c.votes > 0 ? ` · ${c.votes} гол.` : '';
+            return `  • ${catName(c.code)}: ${money(Number(c.total))} (${c.cnt})${v}`;
+          })
+      : ['  —'];
+
   // Разбивка по играм (с учётом периода)
   const byGameQuery = db
     .select({
@@ -182,6 +206,9 @@ export async function renderStats(
     `📱 Телефоны (сейчас): ${active} активных · ${dead} умерло (❌ ${deadError} ошибка · 🔄 ${deadForced} вынужд.)`,
     `🪦 Средний возраст до 💀: ${avgDeathLine}`,
     `🔥 Самая длинная серия: ${longestLine}`,
+    '',
+    '📂 По типу (методики разные):',
+    ...catLines,
     '',
     '🎮 По играм:',
     ...gameLines,
