@@ -69,12 +69,24 @@ export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise
   await ctx.reply('Что закупаем?', { reply_markup: kb });
 }
 
-// Шаг 2: выбрана категория → выбор игры (кнопки).
+// Шаг 2: выбрана категория. Для танков — спрашиваем игру; для ВК игра не нужна
+// (Massive/Furious — это танки), сразу к выбору голосов/суммы.
 export async function onCategorySelected(ctx: AppContext, code: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_category') return;
-  ctx.session.flow = { kind: 'purchase_game', phoneId: flow.phoneId, categoryCode: code };
 
+  if (code === 'vk_votes') {
+    ctx.session.flow = {
+      kind: 'purchase_amount',
+      phoneId: flow.phoneId,
+      categoryCode: code,
+      game: null,
+    };
+    await askAmount(ctx);
+    return;
+  }
+
+  ctx.session.flow = { kind: 'purchase_game', phoneId: flow.phoneId, categoryCode: code };
   const kb = new InlineKeyboard();
   for (const g of GAMES) kb.text(g, `${CB.game}${g}`).row();
   kb.text('⏭ Без игры', `${CB.game}`).row();
@@ -82,7 +94,7 @@ export async function onCategorySelected(ctx: AppContext, code: string): Promise
   await ctx.reply('В какой игре?', { reply_markup: kb });
 }
 
-// Шаг 3: выбрана игра (или «без игры») → выбор суммы (быстрые кнопки + «Другая»).
+// Шаг 3 (только танки): выбрана игра → выбор суммы.
 export async function onGameSelected(ctx: AppContext, gameValue: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_game') return;
@@ -94,9 +106,15 @@ export async function onGameSelected(ctx: AppContext, gameValue: string): Promis
     categoryCode: flow.categoryCode,
     game,
   };
+  await askAmount(ctx);
+}
 
-  // Быстрые суммы из denominations категории.
-  // game_donate: числа [2,30,100] (€). vk_votes: [{units,price}] (голоса · €).
+// Показ выбора суммы из denominations категории.
+// game_donate: числа [2,30,100] (€). vk_votes: [{units,price}] (голоса · €).
+async function askAmount(ctx: AppContext): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_amount') return;
+
   const cat = await db
     .select({ denominations: purchaseCategories.denominations })
     .from(purchaseCategories)
