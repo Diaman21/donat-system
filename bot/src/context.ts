@@ -12,12 +12,22 @@ export type FlowState =
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
   | { kind: 'purchase_amount'; phoneId: string; categoryCode: string; game: string | null }
   | {
+      // ВК-мультизакуп: набираем кол-во одинаковых покупок счётчиком (➕/➖).
+      kind: 'purchase_count';
+      phoneId: string;
+      categoryCode: string;
+      amount: string; // цена одной покупки (€)
+      unitsPer: number; // голосов за одну покупку
+      qty: number; // сколько таких покупок
+    }
+  | {
       kind: 'purchase_result';
       phoneId: string;
       categoryCode: string;
       game: string | null;
       amount: string;
       units: number | null;
+      qty: number;
     }
   | {
       kind: 'purchase_note';
@@ -26,6 +36,7 @@ export type FlowState =
       game: string | null;
       amount: string;
       units: number | null;
+      qty: number;
       result: PurchaseResultValue;
     }
   | {
@@ -35,6 +46,7 @@ export type FlowState =
       game: string | null;
       amount: string;
       units: number | null;
+      qty: number;
       result: PurchaseResultValue;
       note: string | null;
     };

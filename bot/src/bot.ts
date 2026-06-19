@@ -30,6 +30,7 @@ import {
   onCategorySelected,
   onGameSelected,
   onAmountSelected,
+  onCounter,
   onPurchaseAmount,
   onResultSelected,
   onNoteRequest,
@@ -107,7 +108,8 @@ export function createBot(): Bot<AppContext> {
       // «Отжимаем» кнопки нажатого сообщения — убираем клавиатуру, чтобы
       // нельзя было нажать повторно и было видно, что шаг пройден.
       // Исключение: переключатель периодов /stats сам редактирует это сообщение.
-      if (!data.startsWith(STATS_CB)) {
+      // Счётчик ВК-мультизакупа (pur:cnt:) сам редактирует своё сообщение.
+      if (!data.startsWith(STATS_CB) && !data.startsWith(CB.cnt)) {
         await ctx.editMessageReplyMarkup().catch(() => {});
       }
 
@@ -144,6 +146,9 @@ export function createBot(): Bot<AppContext> {
       }
       if (data.startsWith(CB.amount)) {
         return void (await onAmountSelected(ctx, data.slice(CB.amount.length)));
+      }
+      if (data.startsWith(CB.cnt)) {
+        return void (await onCounter(ctx, data.slice(CB.cnt.length)));
       }
       if (data === CB.note) return void (await onNoteRequest(ctx));
       if (data.startsWith(CB.net)) return void (await onNetSelected(ctx, data.slice(CB.net.length)));

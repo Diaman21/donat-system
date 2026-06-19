@@ -14,6 +14,7 @@ export const CB = {
   cat: 'pur:cat:', // + категория (code)
   game: 'pur:game:', // + название игры ('' = без игры)
   amount: 'pur:amt:', // + число | 'custom'
+  cnt: 'pur:cnt:', // + inc|dec|done|noop — счётчик кол-ва (ВК-мультизакуп)
   result: 'pur:res:', // + done|support|long
   note: 'pur:note', // добавить/изменить заметку (точное совпадение)
   net: 'pur:net:', // + mobile|wifi — выбор интернета = запись покупки
@@ -152,7 +153,30 @@ export async function onAmountSelected(ctx: AppContext, value: string): Promise<
   const n = Number(priceStr);
   if (!Number.isFinite(n) || n <= 0) return;
   const units = unitsStr ? Number(unitsStr) : null;
-  await askResult(ctx, n.toFixed(2), Number.isFinite(units) ? units : null);
+
+  // ВК (есть голоса) — мультизакуп: набираем кол-во одинаковых покупок счётчиком.
+  if (units !== null && Number.isFinite(units)) {
+    ctx.session.flow = {
+      kind: 'purchase_count',
+      phoneId: flow.phoneId,
+      categoryCode: flow.categoryCode,
+      amount: n.toFixed(2),
+      unitsPer: units,
+      qty: 1,
+    };
+    await showCounter(ctx, false);
+    return;
+  }
+
+  // Танки — одна покупка, сразу к результату.
+  await askResult(ctx, {
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game: flow.game,
+    amount: n.toFixed(2),
+    units: null,
+    qty: 1,
+  });
 }
 
 // Шаг 4b: «своя» сумма текстом (€, без голосов).
@@ -167,21 +191,90 @@ export async function onPurchaseAmount(ctx: AppContext, text: string): Promise<v
     });
     return;
   }
-  await askResult(ctx, n.toFixed(2), null);
-}
-
-// Переход к выбору результата (общий для быстрой суммы и текстового ввода).
-async function askResult(ctx: AppContext, amount: string, units: number | null): Promise<void> {
-  const flow = ctx.session.flow;
-  if (flow?.kind !== 'purchase_amount') return;
-  ctx.session.flow = {
-    kind: 'purchase_result',
+  await askResult(ctx, {
     phoneId: flow.phoneId,
     categoryCode: flow.categoryCode,
     game: flow.game,
-    amount,
-    units,
-  };
+    amount: n.toFixed(2),
+    units: null,
+    qty: 1,
+  });
+}
+
+// Экран счётчика количества (ВК-мультизакуп): ➖ N шт ➕ / ✅ Далее.
+async function showCounter(ctx: AppContext, edit: boolean): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_count') return;
+  const totalEur = (Number(flow.amount) * flow.qty).toFixed(2);
+  const totalVotes = flow.unitsPer * flow.qty;
+  const text =
+    `🗳 ${flow.unitsPer} голосов · €${flow.amount} за покупку\n` +
+    `Количество покупок: ${flow.qty}\n` +
+    `Итого: €${totalEur} · ${totalVotes} голосов`;
+  const kb = new InlineKeyboard()
+    .text('➖', `${CB.cnt}dec`)
+    .text(`${flow.qty} шт`, `${CB.cnt}noop`)
+    .text('➕', `${CB.cnt}inc`)
+    .row()
+    .text(`✅ Далее (${flow.qty})`, `${CB.cnt}done`)
+    .row()
+    .text('✖️ Отмена', CANCEL_CB);
+  if (edit) {
+    await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
+  } else {
+    await ctx.reply(text, { reply_markup: kb });
+  }
+}
+
+// Нажатия счётчика: ➕/➖ меняют кол-во на месте, «Далее» → к результату.
+export async function onCounter(ctx: AppContext, action: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_count') return;
+
+  if (action === 'inc') {
+    ctx.session.flow = { ...flow, qty: Math.min(flow.qty + 1, 99) };
+    await showCounter(ctx, true);
+    return;
+  }
+  if (action === 'dec') {
+    ctx.session.flow = { ...flow, qty: Math.max(flow.qty - 1, 1) };
+    await showCounter(ctx, true);
+    return;
+  }
+  if (action === 'done') {
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    await askResult(ctx, {
+      phoneId: flow.phoneId,
+      categoryCode: flow.categoryCode,
+      game: null,
+      amount: flow.amount,
+      units: flow.unitsPer,
+      qty: flow.qty,
+    });
+  }
+  // noop — просто индикатор, ничего не делаем
+}
+
+// Переход к выбору результата (для танков, ВК-мультизакупа и текстовой суммы).
+async function askResult(
+  ctx: AppContext,
+  data: {
+    phoneId: string;
+    categoryCode: string;
+    game: string | null;
+    amount: string;
+    units: number | null;
+    qty: number;
+  },
+): Promise<void> {
+  ctx.session.flow = { kind: 'purchase_result', ...data };
+  const totalEur = (Number(data.amount) * data.qty).toFixed(2);
+  const head =
+    data.qty > 1
+      ? `${data.qty} × €${data.amount} = €${totalEur}${
+          data.units ? ` · ${data.units * data.qty} голосов` : ''
+        }. Результат?`
+      : `Сумма €${data.amount}. Результат?`;
   const kb = new InlineKeyboard()
     .text(RESULT_LABEL.done, `${CB.result}done`)
     .row()
@@ -190,7 +283,7 @@ async function askResult(ctx: AppContext, amount: string, units: number | null):
     .text(RESULT_LABEL.long, `${CB.result}long`)
     .row()
     .text('✖️ Отмена', CANCEL_CB);
-  await ctx.reply(`Сумма €${amount}. Результат?`, { reply_markup: kb });
+  await ctx.reply(head, { reply_markup: kb });
 }
 
 // Шаг 5: выбран результат → показываем сводку на подтверждение.
@@ -210,6 +303,7 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     game: flow.game,
     amount: flow.amount,
     units: flow.units,
+    qty: flow.qty,
     result,
     note: null,
   };
@@ -228,14 +322,19 @@ async function showConfirm(ctx: AppContext): Promise<void> {
     .limit(1);
   const imei = ph[0]?.imei ?? '????';
   const catLabel = CATEGORY_LABEL[flow.categoryCode] ?? flow.categoryCode;
+  const multi = flow.qty > 1;
+  const totalEur = (Number(flow.amount) * flow.qty).toFixed(2);
 
   const summary = [
     'Проверь и подтверди:',
     '',
     `📱 …${imei}`,
     `🗂 ${catLabel}${flow.game ? ` · ${flow.game}` : ''}`,
-    flow.units ? `🗳 ${flow.units} голосов` : null,
-    `💵 €${flow.amount}`,
+    multi ? `🔁 ${flow.qty} покупок подряд` : null,
+    flow.units
+      ? `🗳 ${flow.units}${multi ? ` × ${flow.qty} = ${flow.units * flow.qty}` : ''} голосов`
+      : null,
+    multi ? `💵 €${flow.amount} × ${flow.qty} = €${totalEur}` : `💵 €${flow.amount}`,
     `Результат: ${RESULT_LABEL[flow.result]}`,
     flow.note ? `📝 ${flow.note}` : null,
   ]
@@ -268,6 +367,7 @@ export async function onNoteRequest(ctx: AppContext): Promise<void> {
     game: flow.game,
     amount: flow.amount,
     units: flow.units,
+    qty: flow.qty,
     result: flow.result,
   };
   await ctx.reply('Напиши заметку по закупке (логи, детали, что с саппортом и т.п.):', {
@@ -287,6 +387,7 @@ export async function onPurchaseNote(ctx: AppContext, text: string): Promise<voi
     game: flow.game,
     amount: flow.amount,
     units: flow.units,
+    qty: flow.qty,
     result: flow.result,
     note,
   };
@@ -318,7 +419,8 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     return;
   }
 
-  await db.insert(purchases).values({
+  // ВК-мультизакуп: пишем qty ОТДЕЛЬНЫХ строк (каждая транзакция важна для аналитики).
+  const rows = Array.from({ length: flow.qty }, () => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
     categoryId: category.id,
@@ -328,15 +430,18 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     notes: flow.note,
     internet,
     units: flow.units,
-  });
+  }));
+  await db.insert(purchases).values(rows);
 
-  const { phoneId, result, amount, game, note, units } = flow;
+  const { phoneId, result, amount, game, note, units, qty } = flow;
   ctx.session.flow = undefined;
 
+  const multi = qty > 1;
+  const totalEur = (Number(amount) * qty).toFixed(2);
   const parts = [
-    `✅ Записано: ${RESULT_LABEL[result]}`,
-    units ? `🗳 ${units} голосов` : null,
-    `Сумма: €${amount}`,
+    multi ? `✅ Записано ${qty} покупок: ${RESULT_LABEL[result]}` : `✅ Записано: ${RESULT_LABEL[result]}`,
+    units ? `🗳 ${units}${multi ? ` × ${qty} = ${units * qty}` : ''} голосов` : null,
+    multi ? `Сумма: €${amount} × ${qty} = €${totalEur}` : `Сумма: €${amount}`,
     game ? `Игра: ${game}` : null,
     internet ? `Интернет: ${INTERNET_LABEL[internet]}` : null,
     note ? `📝 ${note}` : null,
