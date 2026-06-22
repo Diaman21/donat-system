@@ -6,7 +6,6 @@ import { loadUser } from './middlewares/auth.js';
 import { handleStart } from './handlers/start.js';
 import { handleHelp } from './handlers/help.js';
 import { handleCancel, CANCEL_CB } from './handlers/common.js';
-import { BTN } from './handlers/menus.js';
 import {
   startAddPhone,
   onAddPhoneImei,
@@ -90,14 +89,16 @@ export function createBot(): Bot<AppContext> {
   bot.command('help', handleHelp);
   bot.command('cancel', handleCancel);
 
-  // Кнопки главного меню
-  bot.hears(BTN.purchase, startPurchase);
-  bot.hears(BTN.addPhone, startAddPhone);
-  bot.hears(BTN.phones, listPhones);
-  bot.hears(BTN.prepared, listPrepared);
-  bot.hears(BTN.stats, showStats);
-  bot.hears(BTN.recent, showRecent);
-  bot.hears(BTN.delLast, startDeleteLast);
+  // Кнопки главного меню. Матчим по СЛОВУ, без привязки к эмодзи —
+  // чтобы старые закешированные кнопки (со старыми иконками) тоже работали
+  // и смена иконок в будущем не ломала роутинг.
+  bot.hears(/Закупка$/, startPurchase);
+  bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
+  bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
+  bot.hears(/Подготовленные$/, listPrepared);
+  bot.hears(/Статистика$/, showStats);
+  bot.hears(/Последние$/, showRecent);
+  bot.hears(/Удалить последнюю$/, startDeleteLast);
 
   // Inline-callback'и
   bot.on('callback_query:data', async (ctx) => {
