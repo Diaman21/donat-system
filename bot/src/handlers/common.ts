@@ -7,7 +7,7 @@ export const CANCEL_CB = 'cancel';
 // Inline-кнопка «Отмена» для прикрепления к промптам пошагового ввода.
 export function cancelKb(base?: InlineKeyboard): InlineKeyboard {
   const kb = base ?? new InlineKeyboard();
-  return kb.text('✖️ Отмена', CANCEL_CB);
+  return kb.text('❌ Отмена', CANCEL_CB);
 }
 
 // Сброс текущего ввода и возврат в меню.

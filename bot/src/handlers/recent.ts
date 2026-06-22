@@ -66,7 +66,7 @@ export async function startDeleteLast(ctx: AppContext): Promise<void> {
   }
 
   const g = last.game ? ` ${last.game}` : '';
-  const kb = new InlineKeyboard().text('✅ Удалить', DELLAST_CB).text('✖️ Отмена', CANCEL_CB);
+  const kb = new InlineKeyboard().text('✅ Удалить', DELLAST_CB).text('❌ Отмена', CANCEL_CB);
   await ctx.reply(
     `Удалить твою последнюю закупку?\n\n${RESULT_EMOJI[last.result]} €${last.amount} …${last.imei}${g} · ${fmtTime(last.purchasedAt)}`,
     { reply_markup: kb },

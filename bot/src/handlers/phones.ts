@@ -66,7 +66,7 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     const kb = new InlineKeyboard()
       .text('✅ Это новый аппарат — привязать', `${ADDPH_CB}${imei}`)
       .row()
-      .text('✖️ Отмена', CANCEL_CB);
+      .text('❌ Отмена', CANCEL_CB);
     await ctx.reply(
       `⚠️ На …${imei} уже работали${lbl}: умер ${when} (${reason}).${more}\n\n` +
         'Последние 4 цифры IMEI могут совпадать у разных аппаратов. ' +
@@ -102,7 +102,7 @@ export async function onAddPhoneLabel(ctx: AppContext, text: string): Promise<vo
     .row()
     .text('🧰 В подготовленные', `${DEST_CB}prepared`)
     .row()
-    .text('✖️ Отмена', CANCEL_CB);
+    .text('❌ Отмена', CANCEL_CB);
   await ctx.reply(
     'Куда добавить телефон?\n' +
       '▶️ В работу — сразу на закупки (≤3 активных).\n' +
@@ -257,7 +257,7 @@ export async function onKillAsk(ctx: AppContext, phoneId: string): Promise<void>
   }
   const kb = new InlineKeyboard()
     .text('✅ Вывести', `${KILLC_CB}${phoneId}`)
-    .text('✖️ Отмена', CANCEL_CB);
+    .text('❌ Отмена', CANCEL_CB);
   await ctx.reply(
     `Вынужденно вывести телефон …${ph.imei}${ph.label ? ` («${ph.label}»)` : ''} из активных?\n` +
       'Это для возврата бюджета (НЕ ошибка Apple) — в аналитике помечается как искусственная смерть.',

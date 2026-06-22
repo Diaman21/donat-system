@@ -50,7 +50,7 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
     const label = `…${p.imeiLast4}${p.label ? ` (${p.label})` : ''}`;
     kb.text(label, `${CB.phone}${p.id}`).row();
   }
-  kb.text('✖️ Отмена', CANCEL_CB);
+  kb.text('❌ Отмена', CANCEL_CB);
   await ctx.reply('С какого телефона закупка?', { reply_markup: kb });
 }
 
@@ -66,7 +66,7 @@ export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise
   for (const c of cats) {
     kb.text(CATEGORY_LABEL[c.code] ?? c.code, `${CB.cat}${c.code}`).row();
   }
-  kb.text('✖️ Отмена', CANCEL_CB);
+  kb.text('❌ Отмена', CANCEL_CB);
   await ctx.reply('Что закупаем?', { reply_markup: kb });
 }
 
@@ -91,7 +91,7 @@ export async function onCategorySelected(ctx: AppContext, code: string): Promise
   const kb = new InlineKeyboard();
   for (const g of GAMES) kb.text(g, `${CB.game}${g}`).row();
   kb.text('⏭ Без игры', `${CB.game}`).row();
-  kb.text('✖️ Отмена', CANCEL_CB);
+  kb.text('❌ Отмена', CANCEL_CB);
   await ctx.reply('В какой игре?', { reply_markup: kb });
 }
 
@@ -135,7 +135,7 @@ async function askAmount(ctx: AppContext): Promise<void> {
       isVk = true;
     }
   }
-  kb.row().text('✏️ Другая сумма', `${CB.amount}custom`).row().text('✖️ Отмена', CANCEL_CB);
+  kb.row().text('✏️ Другая сумма', `${CB.amount}custom`).row().text('❌ Отмена', CANCEL_CB);
   await ctx.reply(isVk ? 'Сколько голосов купил?' : 'Сколько € потрачено?', { reply_markup: kb });
 }
 
@@ -212,13 +212,13 @@ async function showCounter(ctx: AppContext, edit: boolean): Promise<void> {
     `Количество покупок: ${flow.qty}\n` +
     `Итого: €${totalEur} · ${totalVotes} голосов`;
   const kb = new InlineKeyboard()
-    .text('➖', `${CB.cnt}dec`)
+    .text('🔻', `${CB.cnt}dec`)
     .text(`${flow.qty} шт`, `${CB.cnt}noop`)
-    .text('➕', `${CB.cnt}inc`)
+    .text('🔺', `${CB.cnt}inc`)
     .row()
     .text(`✅ Далее (${flow.qty})`, `${CB.cnt}done`)
     .row()
-    .text('✖️ Отмена', CANCEL_CB);
+    .text('❌ Отмена', CANCEL_CB);
   if (edit) {
     await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
   } else {
@@ -282,7 +282,7 @@ async function askResult(
     .row()
     .text(RESULT_LABEL.long, `${CB.result}long`)
     .row()
-    .text('✖️ Отмена', CANCEL_CB);
+    .text('❌ Отмена', CANCEL_CB);
   await ctx.reply(head, { reply_markup: kb });
 }
 
@@ -347,7 +347,7 @@ async function showConfirm(ctx: AppContext): Promise<void> {
     .row()
     .text(flow.note ? '📝 Изменить заметку' : '📝 Заметка', CB.note)
     .row()
-    .text('✖️ Отмена', CANCEL_CB);
+    .text('❌ Отмена', CANCEL_CB);
   await ctx.reply(`${summary}\n\nВыбери интернет — это запишет закупку:`, { reply_markup: kb });
 }
 
