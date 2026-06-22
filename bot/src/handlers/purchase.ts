@@ -41,7 +41,7 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
 
   const active = await db.select().from(phones).where(eq(phones.status, 'active'));
   if (active.length === 0) {
-    await ctx.reply('Нет активных телефонов. Сначала привяжи телефон через «➕ Телефон».');
+    await ctx.reply('Нет активных телефонов. Сначала привяжи телефон через «➕📱 Телефон».');
     return;
   }
 

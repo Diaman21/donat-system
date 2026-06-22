@@ -16,7 +16,7 @@ export const ADDPH_CB = 'addph:'; // подтвердить привязку п�
 export const DEST_CB = 'dest:'; // назначение нового телефона (+ active|prepared)
 export const PREP_CB = 'prep:'; // подготовленный → в работу (+ phoneId)
 
-// «➕ Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
+// «➕📱 Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
   if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
@@ -136,7 +136,7 @@ export async function onAddPhoneDest(ctx: AppContext, dest: string): Promise<voi
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
       await ctx.reply(
         '⚠️ Уже 3 активных телефона — в работу нельзя. Добавь в 🧰 подготовленные ' +
-          '(➕ Телефон заново) или сначала выведи активный.',
+          '(➕📱 Телефон заново) или сначала выведи активный.',
         { reply_markup: mainMenu() },
       );
     } else if (msg.includes('phones_active_imei_unique')) {
@@ -158,7 +158,7 @@ export async function listPrepared(ctx: AppContext): Promise<void> {
     .where(eq(phones.status, 'prepared'))
     .orderBy(desc(phones.createdAt));
   if (prep.length === 0) {
-    await ctx.reply('Подготовленных телефонов нет. Добавь через «➕ Телефон» → «🧰 В подготовленные».');
+    await ctx.reply('Подготовленных телефонов нет. Добавь через «➕📱 Телефон» → «🧰 В подготовленные».');
     return;
   }
 
@@ -207,7 +207,7 @@ export async function listPhones(ctx: AppContext): Promise<void> {
 
   const active = await db.select().from(phones).where(eq(phones.status, 'active'));
   if (active.length === 0) {
-    await ctx.reply('Активных телефонов нет. Привяжи через «➕ Телефон».');
+    await ctx.reply('Активных телефонов нет. Привяжи через «➕📱 Телефон».');
     return;
   }
 
