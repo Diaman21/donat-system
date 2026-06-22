@@ -4,13 +4,13 @@ import type { AppContext } from '../context.js';
 
 // Метки кнопок главного меню (используются и при отрисовке, и в роутинге).
 export const BTN = {
-  purchase: '➕ Закупка',
-  addPhone: '➕ Телефон',
-  phones: '📱 Телефоны',
+  purchase: '🛒 Закупка',
+  addPhone: '📲 Телефон',
+  phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
   stats: '📊 Статистика',
-  recent: '🧾 Последние',
-  delLast: '↩️ Удалить последнюю',
+  recent: '📋 Последние',
+  delLast: '❌ Удалить последнюю',
 } as const;
 
 export function greeting(user: User): string {

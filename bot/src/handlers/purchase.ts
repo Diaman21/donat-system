@@ -41,7 +41,7 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
 
   const active = await db.select().from(phones).where(eq(phones.status, 'active'));
   if (active.length === 0) {
-    await ctx.reply('Нет активных телефонов. Сначала привяжи телефон через «➕ Телефон».');
+    await ctx.reply('Нет активных телефонов. Сначала привяжи телефон через «📲 Телефон».');
     return;
   }
 
@@ -290,7 +290,7 @@ async function askResult(
 export async function onResultSelected(ctx: AppContext, result: PurchaseResultValue): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_result') {
-    await ctx.reply('Сессия ввода истекла. Начни заново: «➕ Закупка».', {
+    await ctx.reply('Сессия ввода истекла. Начни заново: «🛒 Закупка».', {
       reply_markup: mainMenu(),
     });
     return;
@@ -398,7 +398,7 @@ export async function onPurchaseNote(ctx: AppContext, text: string): Promise<voi
 export async function onNetSelected(ctx: AppContext, net: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_confirm') {
-    await ctx.reply('Сессия ввода истекла. Начни заново: «➕ Закупка».', {
+    await ctx.reply('Сессия ввода истекла. Начни заново: «🛒 Закупка».', {
       reply_markup: mainMenu(),
     });
     return;
