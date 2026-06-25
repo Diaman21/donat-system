@@ -9,6 +9,7 @@ export const BTN = {
   phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
   stats: '📊 Статистика',
+  vk: '🗳 ВК',
   recent: '📋 Последние',
   delLast: '❌ Удалить последнюю',
 } as const;
@@ -29,6 +30,7 @@ export function mainMenu(): Keyboard {
     .text(BTN.prepared)
     .row()
     .text(BTN.stats)
+    .text(BTN.vk)
     .text(BTN.recent)
     .row()
     .text(BTN.delLast)

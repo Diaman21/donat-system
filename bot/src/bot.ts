@@ -47,6 +47,7 @@ import {
 import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './handlers/recent.js';
 import { exportCsv } from './handlers/export.js';
 import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js';
+import { showVkReport } from './handlers/vk.js';
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
@@ -81,6 +82,7 @@ export function createBot(): Bot<AppContext> {
   // Команды
   bot.command('start', handleStart);
   bot.command('stats', showStats);
+  bot.command('vk', showVkReport);
   bot.command('phones', listPhones);
   bot.command('recent', showRecent);
   bot.command('history', showPhoneList);
@@ -97,6 +99,7 @@ export function createBot(): Bot<AppContext> {
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
   bot.hears(/Подготовленные$/, listPrepared);
   bot.hears(/Статистика$/, showStats);
+  bot.hears(/ВК$/, showVkReport);
   bot.hears(/Последние$/, showRecent);
   bot.hears(/Удалить последнюю$/, startDeleteLast);
 
