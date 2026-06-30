@@ -1,4 +1,4 @@
-import { eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, users } from '../db/schema.js';
@@ -19,6 +19,65 @@ function money(n: number): string {
   return `€${n.toFixed(2)}`;
 }
 
+// Вывод бюджета — на 14-й день после ПЕРВОЙ покупки на телефон.
+// Предупреждаем заранее, с 12-го дня (буфер на всякий случай).
+const WITHDRAW_DAYS = 14;
+const WARN_FROM_DAY = 12;
+
+// Громкий блок «пора выводить бюджет» — для верха ежедневного отчёта.
+// Появляется ТОЛЬКО когда есть активные телефоны на 12+ дне.
+// Тегаем операторов/модераторов, чтобы Telegram прислал уведомление.
+async function withdrawalAlerts(): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    select ph.imei_last4 as imei, ph.label,
+      to_char((min(p.purchased_at) at time zone 'Europe/Moscow')::date, 'YYYY-MM-DD') as first_day
+    from phones ph join purchases p on p.phone_id = ph.id
+    where ph.status = 'active'
+    group by ph.id, ph.imei_last4, ph.label
+  `)) as unknown as { imei: string; label: string | null; first_day: string }[];
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const t = new Date(Date.now() + 3 * 3600 * 1000); // МСК
+  const todayUTC = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+
+  const alerts: { line: string; days: number }[] = [];
+  for (const r of rows) {
+    const [fy, fm, fd] = r.first_day.split('-').map(Number);
+    const firstUTC = Date.UTC(fy ?? 1970, (fm ?? 1) - 1, fd ?? 1);
+    const days = Math.floor((todayUTC - firstUTC) / 86400000);
+    if (days < WARN_FROM_DAY) continue;
+    const wd = new Date(firstUTC + WITHDRAW_DAYS * 86400000);
+    const wl = `${pad(wd.getUTCDate())}.${pad(wd.getUTCMonth() + 1)}`;
+    const label = r.label ? ` «${r.label}»` : '';
+    let line: string;
+    if (days >= WITHDRAW_DAYS)
+      line = `🔴🔴 …${r.imei}${label} — ${days}-й день, ПРОСРОЧЕНО! (вывод был ${wl})`;
+    else if (days === WITHDRAW_DAYS - 1)
+      line = `🔴 …${r.imei}${label} — 13-й день, ВЫВОД ЗАВТРА (${wl})`;
+    else line = `🟠 …${r.imei}${label} — ${days}-й день, вывод ${wl}`;
+    alerts.push({ line, days });
+  }
+  if (alerts.length === 0) return [];
+  alerts.sort((a, b) => b.days - a.days);
+
+  const team = await db
+    .select({ username: users.username })
+    .from(users)
+    .where(and(inArray(users.role, ['operator', 'moderator']), eq(users.isActive, true)));
+  const mentions = team
+    .filter((u) => u.username)
+    .map((u) => `@${u.username}`)
+    .join(' ');
+
+  return [
+    '‼️‼️ ВЫВОД БЮДЖЕТА ‼️‼️',
+    ...alerts.map((a) => a.line),
+    mentions ? `👉 ${mentions} — не пропустите вывод!` : '👉 Не пропустите вывод!',
+    '➖➖➖➖➖➖➖➖➖➖',
+    '',
+  ];
+}
+
 function periodFilter(period: StatsPeriod): SQL | undefined {
   if (period === '24h') return sql`${purchases.purchasedAt} >= now() - interval '24 hours'`;
   if (period === '7d') return sql`${purchases.purchasedAt} >= now() - interval '7 days'`;
@@ -37,6 +96,9 @@ export async function renderStats(
   period: StatsPeriod,
 ): Promise<{ text: string; kb: InlineKeyboard }> {
   const filter = periodFilter(period);
+
+  // Громкий блок «пора выводить бюджет» — всегда наверху (не зависит от периода)
+  const alertLines = await withdrawalAlerts();
 
   // Покупки по результату (с учётом периода)
   const byResultQuery = db
@@ -197,6 +259,7 @@ export async function renderStats(
       : ['  —'];
 
   const text = [
+    ...alertLines,
     `📊 Статистика (${PERIOD_TITLE[period]})`,
     '',
     `💵 Потрачено: ${money(totalSpent)}`,
