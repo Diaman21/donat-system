@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
@@ -310,6 +310,32 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
   await showConfirm(ctx);
 }
 
+// Итог покупок за сегодня (МСК) на телефоне — для контроля темпа в подтверждении.
+async function todayTally(
+  phoneId: string,
+): Promise<{ tank: Record<number, number>; vkCnt: number; vkVotes: number }> {
+  const rows = (await db.execute(sql`
+    select c.code as code, p.amount::float as amount, count(*)::int as cnt,
+           coalesce(sum(p.units),0)::int as votes
+    from purchases p join purchase_categories c on c.id = p.category_id
+    where p.phone_id = ${phoneId}
+      and (p.purchased_at at time zone 'Europe/Moscow')::date
+          = (now() at time zone 'Europe/Moscow')::date
+    group by c.code, p.amount
+  `)) as unknown as { code: string; amount: number; cnt: number; votes: number }[];
+  const tank: Record<number, number> = {};
+  let vkCnt = 0;
+  let vkVotes = 0;
+  for (const r of rows) {
+    if (r.code === 'game_donate') tank[r.amount] = (tank[r.amount] ?? 0) + r.cnt;
+    else if (r.code === 'vk_votes') {
+      vkCnt += r.cnt;
+      vkVotes += r.votes;
+    }
+  }
+  return { tank, vkCnt, vkVotes };
+}
+
 // Показ экрана подтверждения (с заметкой, если есть).
 async function showConfirm(ctx: AppContext): Promise<void> {
   const flow = ctx.session.flow;
@@ -322,10 +348,29 @@ async function showConfirm(ctx: AppContext): Promise<void> {
     .limit(1);
   const imei = ph[0]?.imei ?? '????';
   const catLabel = CATEGORY_LABEL[flow.categoryCode] ?? flow.categoryCode;
+
+  // Итог за сегодня на этом телефоне (контроль темпа €30/€100 и ВК)
+  const tally = await todayTally(flow.phoneId);
+  const tallyLines: string[] = [];
+  if (flow.categoryCode === 'game_donate') {
+    const a2 = tally.tank[2] ?? 0;
+    const a30 = tally.tank[30] ?? 0;
+    const a100 = tally.tank[100] ?? 0;
+    tallyLines.push(`📊 Сегодня на …${imei}: €2×${a2} · €30×${a30} · €100×${a100}`);
+    const cur = Number(flow.amount);
+    if (cur === 2 || cur === 30 || cur === 100) {
+      tallyLines.push(`   ↳ эта €${cur} будет ${(tally.tank[cur] ?? 0) + 1}-й за сегодня`);
+    }
+  } else if (flow.categoryCode === 'vk_votes') {
+    const after = tally.vkVotes + (flow.units ?? 0) * flow.qty;
+    tallyLines.push(
+      `📊 Сегодня на …${imei}: 🗳 ${tally.vkCnt} покупок · ${tally.vkVotes} голосов → станет ${after}`,
+    );
+  }
   const multi = flow.qty > 1;
   const totalEur = (Number(flow.amount) * flow.qty).toFixed(2);
 
-  const summary = [
+  let summary = [
     'Проверь и подтверди:',
     '',
     `📱 …${imei}`,
@@ -340,6 +385,7 @@ async function showConfirm(ctx: AppContext): Promise<void> {
   ]
     .filter(Boolean)
     .join('\n');
+  if (tallyLines.length) summary += `\n\n${tallyLines.join('\n')}`;
 
   const kb = new InlineKeyboard()
     .text('📶 Моб. интернет', `${CB.net}mobile`)
