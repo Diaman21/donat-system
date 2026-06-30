@@ -48,6 +48,12 @@ import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './ha
 import { exportCsv } from './handlers/export.js';
 import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js';
 import { showVkReport } from './handlers/vk.js';
+import {
+  startReport,
+  onReportCallback,
+  onReportCustomDate,
+  REP_CB,
+} from './handlers/report.js';
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
@@ -83,6 +89,7 @@ export function createBot(): Bot<AppContext> {
   bot.command('start', handleStart);
   bot.command('stats', showStats);
   bot.command('vk', showVkReport);
+  bot.command('period', startReport);
   bot.command('phones', listPhones);
   bot.command('recent', showRecent);
   bot.command('history', showPhoneList);
@@ -101,6 +108,7 @@ export function createBot(): Bot<AppContext> {
   bot.hears(/Статистика$/, showStats);
   bot.hears(/ВК$/, showVkReport);
   bot.hears(/Последние$/, showRecent);
+  bot.hears(/Отчёт$/, startReport);
   bot.hears(/Удалить последнюю$/, startDeleteLast);
 
   // Inline-callback'и
@@ -112,8 +120,13 @@ export function createBot(): Bot<AppContext> {
       // «Отжимаем» кнопки нажатого сообщения — убираем клавиатуру, чтобы
       // нельзя было нажать повторно и было видно, что шаг пройден.
       // Исключение: переключатель периодов /stats сам редактирует это сообщение.
-      // Счётчик ВК-мультизакупа (pur:cnt:) сам редактирует своё сообщение.
-      if (!data.startsWith(STATS_CB) && !data.startsWith(CB.cnt)) {
+      // Счётчик ВК-мультизакупа (pur:cnt:) и проводник отчёта (rep:) сами
+      // редактируют своё сообщение — не «отжимаем» у них клавиатуру.
+      if (
+        !data.startsWith(STATS_CB) &&
+        !data.startsWith(CB.cnt) &&
+        !data.startsWith(REP_CB)
+      ) {
         await ctx.editMessageReplyMarkup().catch(() => {});
       }
 
@@ -127,6 +140,9 @@ export function createBot(): Bot<AppContext> {
         return void (await onKillConfirm(ctx, data.slice(KILLC_CB.length)));
       }
       if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
+      if (data.startsWith(REP_CB)) {
+        return void (await onReportCallback(ctx, data.slice(REP_CB.length)));
+      }
       if (data.startsWith(HIST_CB)) {
         return void (await showPhoneHistory(ctx, data.slice(HIST_CB.length)));
       }
@@ -177,6 +193,8 @@ export function createBot(): Bot<AppContext> {
         return onPurchaseAmount(ctx, ctx.message.text);
       case 'purchase_note':
         return onPurchaseNote(ctx, ctx.message.text);
+      case 'report_custom_date':
+        return onReportCustomDate(ctx, ctx.message.text);
       default:
         await ctx.reply('Не понял. Открой меню: /start или /help.');
     }

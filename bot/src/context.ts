@@ -8,6 +8,7 @@ export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
   | { kind: 'add_phone_dest'; imei: string; label: string | null }
+  | { kind: 'report_custom_date' }
   | { kind: 'purchase_category'; phoneId: string }
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
   | { kind: 'purchase_amount'; phoneId: string; categoryCode: string; game: string | null }
@@ -53,6 +54,9 @@ export type FlowState =
 
 export interface SessionData {
   flow?: FlowState;
+  // Активный период отчёта-проводника (📅 Отчёт). Хранится отдельно от flow,
+  // чтобы callback-кнопки оставались короткими (день/телефон едут в callback).
+  report?: { from: string; to: string };
 }
 
 // Контекст приложения: grammY + сессия + текущий пользователь из БД.

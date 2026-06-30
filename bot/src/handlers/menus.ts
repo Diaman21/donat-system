@@ -11,6 +11,7 @@ export const BTN = {
   stats: '📊 Статистика',
   vk: '🗳 ВК',
   recent: '📋 Последние',
+  report: '📅 Отчёт',
   delLast: '❌ Удалить последнюю',
 } as const;
 
@@ -33,6 +34,7 @@ export function mainMenu(): Keyboard {
     .text(BTN.vk)
     .text(BTN.recent)
     .row()
+    .text(BTN.report)
     .text(BTN.delLast)
     .resized()
     .persistent();

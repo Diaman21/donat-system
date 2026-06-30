@@ -5,6 +5,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: 'start', description: 'Меню' },
   { command: 'stats', description: 'Статистика' },
   { command: 'vk', description: 'ВК-сводка по дням' },
+  { command: 'period', description: 'Отчёт по датам (фильтр + детализация)' },
   { command: 'phones', description: 'Телефоны' },
   { command: 'recent', description: 'Последние закупки' },
   { command: 'history', description: 'История телефона' },
