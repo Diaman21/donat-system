@@ -381,6 +381,9 @@ async function showConfirm(ctx: AppContext): Promise<void> {
       : null,
     multi ? `💵 €${flow.amount} × ${flow.qty} = €${totalEur}` : `💵 €${flow.amount}`,
     `Результат: ${RESULT_LABEL[flow.result]}`,
+    multi && flow.result !== 'done'
+      ? `↳ запишем ${flow.qty - 1}×✅ + последняя ${RESULT_LABEL[flow.result]} (ошибка — у последней попытки)`
+      : null,
     flow.note ? `📝 ${flow.note}` : null,
   ]
     .filter(Boolean)
@@ -466,12 +469,15 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   }
 
   // ВК-мультизакуп: пишем qty ОТДЕЛЬНЫХ строк (каждая транзакция важна для аналитики).
-  const rows = Array.from({ length: flow.qty }, () => ({
+  // Если серия закончилась ⚠️/💀 — ошибка всегда у ПОСЛЕДНЕЙ попытки: успешные
+  // пишем ✅, иначе N строк long/support исказят аналитику смертей (и триггер
+  // смерти сработал бы N раз).
+  const rows = Array.from({ length: flow.qty }, (_, i) => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
     categoryId: category.id,
     amount: flow.amount,
-    result: flow.result,
+    result: i < flow.qty - 1 ? ('done' as const) : flow.result,
     game: flow.game,
     notes: flow.note,
     internet,
@@ -485,7 +491,11 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   const multi = qty > 1;
   const totalEur = (Number(amount) * qty).toFixed(2);
   const parts = [
-    multi ? `✅ Записано ${qty} покупок: ${RESULT_LABEL[result]}` : `✅ Записано: ${RESULT_LABEL[result]}`,
+    multi
+      ? result === 'done'
+        ? `✅ Записано ${qty} покупок: ${RESULT_LABEL[result]}`
+        : `✅ Записано ${qty} покупок: ${qty - 1}×✅ + 1 ${RESULT_LABEL[result]}`
+      : `✅ Записано: ${RESULT_LABEL[result]}`,
     units ? `🗳 ${units}${multi ? ` × ${qty} = ${units * qty}` : ''} голосов` : null,
     multi ? `Сумма: €${amount} × ${qty} = €${totalEur}` : `Сумма: €${amount}`,
     game ? `Игра: ${game}` : null,

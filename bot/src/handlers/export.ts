@@ -11,11 +11,8 @@ function csvCell(v: string): string {
   return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 
-// /export — выгрузка всех покупок в CSV (только модератор, в личке).
-export async function exportCsv(ctx: AppContext): Promise<void> {
-  if (!(await requirePrivate(ctx))) return;
-  if (!(await requireModerator(ctx))) return;
-
+// Сборка CSV всех покупок. Общая для /export и еженедельного бэкапа (cron).
+export async function buildPurchasesCsv(): Promise<{ csv: string; count: number } | null> {
   const rows = await db
     .select({
       at: purchases.purchasedAt,
@@ -33,10 +30,7 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
     .innerJoin(users, eq(users.id, purchases.operatorId))
     .orderBy(desc(purchases.purchasedAt));
 
-  if (rows.length === 0) {
-    await ctx.reply('Покупок нет — нечего выгружать.');
-    return;
-  }
+  if (rows.length === 0) return null;
 
   const header = [
     'Время (МСК)',
@@ -66,8 +60,20 @@ export async function exportCsv(ctx: AppContext): Promise<void> {
   }
 
   // BOM (﻿) — чтобы Excel правильно открыл UTF-8 (русские буквы)
-  const csv = '﻿' + lines.join('\r\n');
-  await ctx.replyWithDocument(new InputFile(Buffer.from(csv, 'utf8'), 'purchases.csv'), {
-    caption: `Выгрузка: ${rows.length} покупок.`,
+  return { csv: '﻿' + lines.join('\r\n'), count: rows.length };
+}
+
+// /export — выгрузка всех покупок в CSV (только модератор, в личке).
+export async function exportCsv(ctx: AppContext): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireModerator(ctx))) return;
+
+  const built = await buildPurchasesCsv();
+  if (!built) {
+    await ctx.reply('Покупок нет — нечего выгружать.');
+    return;
+  }
+  await ctx.replyWithDocument(new InputFile(Buffer.from(built.csv, 'utf8'), 'purchases.csv'), {
+    caption: `Выгрузка: ${built.count} покупок.`,
   });
 }
