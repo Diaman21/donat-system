@@ -310,6 +310,19 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
   await showConfirm(ctx);
 }
 
+// Итог за всё время на телефоне — контроль суммарной нагрузки в подтверждении.
+async function phoneTotals(
+  phoneId: string,
+): Promise<{ cnt: number; eur: number; votes: number }> {
+  const rows = (await db.execute(sql`
+    select count(*)::int as cnt,
+           coalesce(sum(amount),0)::float as eur,
+           coalesce(sum(units),0)::int as votes
+    from purchases where phone_id = ${phoneId}
+  `)) as unknown as { cnt: number; eur: number; votes: number }[];
+  return rows[0] ?? { cnt: 0, eur: 0, votes: 0 };
+}
+
 // Итог покупок за сегодня (МСК) на телефоне — для контроля темпа в подтверждении.
 async function todayTally(
   phoneId: string,
@@ -349,8 +362,9 @@ async function showConfirm(ctx: AppContext): Promise<void> {
   const imei = ph[0]?.imei ?? '????';
   const catLabel = CATEGORY_LABEL[flow.categoryCode] ?? flow.categoryCode;
 
-  // Итог за сегодня на этом телефоне (контроль темпа €30/€100 и ВК)
+  // Итог за сегодня + за всё время на этом телефоне (контроль темпа и суммарной нагрузки)
   const tally = await todayTally(flow.phoneId);
+  const totals = await phoneTotals(flow.phoneId);
   const tallyLines: string[] = [];
   if (flow.categoryCode === 'game_donate') {
     const a2 = tally.tank[2] ?? 0;
@@ -367,6 +381,10 @@ async function showConfirm(ctx: AppContext): Promise<void> {
       `📊 Сегодня на …${imei}: 🗳 ${tally.vkCnt} покупок · ${tally.vkVotes} голосов → станет ${after}`,
     );
   }
+  const willBeEur = totals.eur + Number(flow.amount) * flow.qty;
+  tallyLines.push(
+    `💰 Всего на …${imei}: ${totals.cnt} покупок · €${totals.eur.toFixed(2)} → станет €${willBeEur.toFixed(2)}`,
+  );
   const multi = flow.qty > 1;
   const totalEur = (Number(flow.amount) * flow.qty).toFixed(2);
 
