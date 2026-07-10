@@ -14,6 +14,8 @@ import {
   onAddPhoneDest,
   listPrepared,
   onPreparedToWork,
+  onPreparedDeleteAsk,
+  onPreparedDeleteConfirm,
   onKillAsk,
   onKillConfirm,
   onAddPhoneConfirm,
@@ -22,6 +24,8 @@ import {
   ADDPH_CB,
   DEST_CB,
   PREP_CB,
+  PREPDEL_CB,
+  PREPDELC_CB,
 } from './handlers/phones.js';
 import {
   startPurchase,
@@ -151,6 +155,13 @@ export function createBot(): Bot<AppContext> {
       }
       if (data.startsWith(DEST_CB)) {
         return void (await onAddPhoneDest(ctx, data.slice(DEST_CB.length)));
+      }
+      // удаление подготовленного: prepdelc: раньше prepdel:, оба раньше prep:
+      if (data.startsWith(PREPDELC_CB)) {
+        return void (await onPreparedDeleteConfirm(ctx, data.slice(PREPDELC_CB.length)));
+      }
+      if (data.startsWith(PREPDEL_CB)) {
+        return void (await onPreparedDeleteAsk(ctx, data.slice(PREPDEL_CB.length)));
       }
       if (data.startsWith(PREP_CB)) {
         return void (await onPreparedToWork(ctx, data.slice(PREP_CB.length)));

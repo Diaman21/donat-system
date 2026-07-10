@@ -15,6 +15,8 @@ export const KILLC_CB = 'killc:'; // подтвердить вывод
 export const ADDPH_CB = 'addph:'; // подтвердить привязку при повторе 4 цифр (+ imei)
 export const DEST_CB = 'dest:'; // назначение нового телефона (+ active|prepared)
 export const PREP_CB = 'prep:'; // подготовленный → в работу (+ phoneId)
+export const PREPDEL_CB = 'prepdel:'; // спросить подтверждение удаления подготовленного
+export const PREPDELC_CB = 'prepdelc:'; // подтвердить удаление подготовленного
 
 // «➕📱 Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
@@ -166,10 +168,74 @@ export async function listPrepared(ctx: AppContext): Promise<void> {
   const lines = prep.map((p) => `🧰 …${p.imeiLast4}${p.label ? ` «${p.label}»` : ''}`);
   const kb = new InlineKeyboard();
   if (allowWork) {
-    for (const p of prep) kb.text(`▶️ В работу …${p.imeiLast4}`, `${PREP_CB}${p.id}`).row();
+    for (const p of prep) {
+      kb.text(`▶️ В работу …${p.imeiLast4}`, `${PREP_CB}${p.id}`)
+        .text(`🗑 Удалить …${p.imeiLast4}`, `${PREPDEL_CB}${p.id}`)
+        .row();
+    }
   }
   await ctx.reply(['🧰 Подготовленные телефоны:', '', ...lines].join('\n'), {
     reply_markup: allowWork ? kb : undefined,
+  });
+}
+
+// «🗑 Удалить» (подготовленный) — спросить подтверждение.
+export async function onPreparedDeleteAsk(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+
+  const rows = await db
+    .select({ imei: phones.imeiLast4, label: phones.label })
+    .from(phones)
+    .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+    .limit(1);
+  const p = rows[0];
+  if (!p) {
+    await ctx.reply('Телефон не найден среди подготовленных.', { reply_markup: mainMenu() });
+    return;
+  }
+  const kb = new InlineKeyboard()
+    .text('🗑 Да, удалить', `${PREPDELC_CB}${phoneId}`)
+    .text('❌ Отмена', CANCEL_CB);
+  await ctx.reply(
+    `Удалить подготовленный телефон …${p.imei}${p.label ? ` «${p.label}»` : ''} из списка?\n` +
+      'Он исчезнет насовсем (это резерв без покупок — истории не будет).',
+    { reply_markup: kb },
+  );
+}
+
+// Подтверждение удаления подготовленного: удаляем строку из БД.
+// Только prepared и только без покупок — история неприкосновенна.
+export async function onPreparedDeleteConfirm(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+
+  const bought = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(purchases)
+    .where(eq(purchases.phoneId, phoneId));
+  if ((bought[0]?.c ?? 0) > 0) {
+    await ctx.reply(
+      '⚠️ На этом телефоне есть покупки — удалять нельзя (история нужна для аналитики). ' +
+        'Если он не нужен, введи в работу и выведи через «☠️ Вывести».',
+      { reply_markup: mainMenu() },
+    );
+    return;
+  }
+
+  const del = await db
+    .delete(phones)
+    .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+    .returning({ imei: phones.imeiLast4, label: phones.label });
+  if (del.length === 0) {
+    await ctx.reply('Телефон не найден среди подготовленных (возможно, уже удалён).', {
+      reply_markup: mainMenu(),
+    });
+    return;
+  }
+  const d = del[0]!;
+  await ctx.reply(`🗑 Подготовленный …${d.imei}${d.label ? ` «${d.label}»` : ''} удалён.`, {
+    reply_markup: mainMenu(),
   });
 }
 
