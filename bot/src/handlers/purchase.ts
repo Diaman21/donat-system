@@ -153,7 +153,10 @@ async function askAmount(ctx: AppContext): Promise<void> {
     .where(eq(purchaseCategories.code, flow.categoryCode))
     .limit(1);
   const raw = cat[0]?.denominations;
-  const denoms = Array.isArray(raw) ? raw : [];
+  const denoms = Array.isArray(raw) ? [...raw] : [];
+  // €2-разогрев ведём ТОЛЬКО через Massive — кнопка €2 показывается только там.
+  // Furious и «другая игра» — боевые суммы (30/100) + «Другая сумма» текстом.
+  if (flow.categoryCode === 'game_donate' && flow.game === 'Massive') denoms.unshift(2);
 
   const kb = new InlineKeyboard();
   let isVk = false;
