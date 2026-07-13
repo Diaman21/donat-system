@@ -90,17 +90,48 @@ export async function onCategorySelected(ctx: AppContext, code: string): Promise
   ctx.session.flow = { kind: 'purchase_game', phoneId: flow.phoneId, categoryCode: code };
   const kb = new InlineKeyboard();
   for (const g of GAMES) kb.text(g, `${CB.game}${g}`).row();
-  kb.text('⏭ Без игры', `${CB.game}`).row();
+  kb.text('✏️ Другая игра', `${CB.game}__custom`).row();
   kb.text('❌ Отмена', CANCEL_CB);
   await ctx.reply('В какой игре?', { reply_markup: kb });
 }
 
-// Шаг 3 (только танки): выбрана игра → выбор суммы.
+// Шаг 3 (только танки): выбрана игра → выбор суммы (или ввод названия текстом).
 export async function onGameSelected(ctx: AppContext, gameValue: string): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_game') return;
 
+  if (gameValue === '__custom') {
+    ctx.session.flow = {
+      kind: 'purchase_game_custom',
+      phoneId: flow.phoneId,
+      categoryCode: flow.categoryCode,
+    };
+    await ctx.reply('Напиши название игры:', { reply_markup: cancelKb() });
+    return;
+  }
+
   const game = gameValue.length > 0 ? gameValue : null;
+  ctx.session.flow = {
+    kind: 'purchase_amount',
+    phoneId: flow.phoneId,
+    categoryCode: flow.categoryCode,
+    game,
+  };
+  await askAmount(ctx);
+}
+
+// Название «другой игры» текстом → к выбору суммы.
+export async function onPurchaseGame(ctx: AppContext, text: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'purchase_game_custom') return;
+
+  const game = text.trim();
+  if (game.length === 0 || game.length > 50) {
+    await ctx.reply('Нужно название игры текстом (до 50 символов). Попробуй ещё раз:', {
+      reply_markup: cancelKb(),
+    });
+    return;
+  }
   ctx.session.flow = {
     kind: 'purchase_amount',
     phoneId: flow.phoneId,

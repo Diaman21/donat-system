@@ -11,6 +11,7 @@ export type FlowState =
   | { kind: 'report_custom_date' }
   | { kind: 'purchase_category'; phoneId: string }
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
+  | { kind: 'purchase_game_custom'; phoneId: string; categoryCode: string }
   | { kind: 'purchase_amount'; phoneId: string; categoryCode: string; game: string | null }
   | {
       // ВК-мультизакуп: набираем кол-во одинаковых покупок счётчиком (➕/➖).

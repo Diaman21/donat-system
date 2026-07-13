@@ -35,6 +35,7 @@ import {
   onAmountSelected,
   onCounter,
   onPurchaseAmount,
+  onPurchaseGame,
   onResultSelected,
   onNoteRequest,
   onPurchaseNote,
@@ -200,6 +201,8 @@ export function createBot(): Bot<AppContext> {
         return onAddPhoneImei(ctx, ctx.message.text);
       case 'add_phone_label':
         return onAddPhoneLabel(ctx, ctx.message.text);
+      case 'purchase_game_custom':
+        return onPurchaseGame(ctx, ctx.message.text);
       case 'purchase_amount':
         return onPurchaseAmount(ctx, ctx.message.text);
       case 'purchase_note':
