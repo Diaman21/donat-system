@@ -7,7 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
-import { fmtMsk } from '../format.js';
+import { fmtMsk, fmtMskDate } from '../format.js';
 import { HIST_CB } from './history.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
@@ -297,7 +297,9 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     const cnt = s?.cnt ?? 0;
     const total = s?.total ?? '0';
     const label = p.label ? ` «${p.label}»` : '';
-    lines.push(`📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок`);
+    lines.push(
+      `📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок · 🗓 в работе с ${fmtMskDate(p.connectedAt)}`,
+    );
     // у каждого: подробная инфо (история+разбивка) и вывод
     kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);
     if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`);

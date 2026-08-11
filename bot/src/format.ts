@@ -14,3 +14,14 @@ const mskDateTime = new Intl.DateTimeFormat('ru-RU', {
 export function fmtMsk(d: Date): string {
   return mskDateTime.format(d).replace(',', '');
 }
+
+const mskDate = new Intl.DateTimeFormat('ru-RU', {
+  timeZone: 'Europe/Moscow',
+  day: '2-digit',
+  month: '2-digit',
+});
+
+// «04.06» — только дата (по Москве)
+export function fmtMskDate(d: Date): string {
+  return mskDate.format(d);
+}
