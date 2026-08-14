@@ -296,7 +296,9 @@ export async function showStats(ctx: AppContext): Promise<void> {
 }
 
 // Переключение периода (callback).
+// Роль проверяем и здесь: в группе кнопки видны всем участникам.
 export async function onStatsPeriod(ctx: AppContext, period: StatsPeriod): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
   const { text, kb } = await renderStats(period);
   try {
     await ctx.editMessageText(text, { reply_markup: kb });

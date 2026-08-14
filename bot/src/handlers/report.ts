@@ -260,6 +260,8 @@ export async function onReportCustomDate(ctx: AppContext, text: string): Promise
 
 // Роутер callback'ов rep:*
 export async function onReportCallback(ctx: AppContext, rest: string): Promise<void> {
+  // Роль проверяем и здесь: в группе кнопки отчёта видны всем участникам.
+  if (!(await requireOperator(ctx))) return;
   if (rest === 'home') return void (await render(ctx, '📅 За какой период отчёт?', rangePicker(), true));
 
   if (rest.startsWith('range:')) {
