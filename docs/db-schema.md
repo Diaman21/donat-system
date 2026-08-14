@@ -14,7 +14,7 @@
 | `0003_bot_sessions.sql` | `bot_sessions` — хранилище grammy-сессий (нужно для serverless) |
 | `0004_phone_death_reason.sql` | `phones.death_reason` — `'error'` / `'forced'` |
 | `0005_purchase_internet.sql` | `purchases.internet` — `'mobile'` / `'wifi'` |
-| `0006_purchase_units.sql` | `purchases.units` — количество единиц (для ВК — голоса) |
+| `0006_vk_units.sql` | `purchases.units` — количество единиц (для ВК — голоса) |
 | `0007_phone_prepared.sql` | значение `prepared` в enum `phone_status` |
 
 **Никогда не редактируем уже применённую миграцию** — только новый файл `000N_*.sql`.
