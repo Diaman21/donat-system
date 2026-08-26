@@ -283,7 +283,7 @@ export async function listPhones(ctx: AppContext): Promise<void> {
       cnt: sql<number>`count(*)::int`,
       total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
       // Большая покупка в Furious делается только ОДИН раз на телефон.
-      // Старые записи шли как €100, новые — €105: считаем оба номинала.
+      // €100 — страховка от ручного ввода: в Furious всегда €105.
       furBig: sql<number>`count(*) filter (
         where ${purchases.game} = 'Furious'
           and ${purchases.amount} in (100, 105)
