@@ -282,6 +282,12 @@ export async function listPhones(ctx: AppContext): Promise<void> {
       phoneId: purchases.phoneId,
       cnt: sql<number>`count(*)::int`,
       total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      // Большая покупка в Furious делается только ОДИН раз на телефон.
+      // Старые записи шли как €100, новые — €105: считаем оба номинала.
+      furBig: sql<number>`count(*) filter (
+        where ${purchases.game} = 'Furious'
+          and ${purchases.amount} in (100, 105)
+          and ${purchases.result} = 'done')::int`,
     })
     .from(purchases)
     .groupBy(purchases.phoneId);
@@ -300,6 +306,7 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     lines.push(
       `📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок · 🗓 в работе с ${fmtMskDate(p.connectedAt)}`,
     );
+    if ((s?.furBig ?? 0) > 0) lines.push('   ❗️ Furious €105 уже был — второй не делать');
     // у каждого: подробная инфо (история+разбивка) и вывод
     kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);
     if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`);

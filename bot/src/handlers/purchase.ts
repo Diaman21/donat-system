@@ -23,6 +23,27 @@ export const CB = {
 // Игры для выбора при закупке
 const GAMES = ['Massive', 'Furious'] as const;
 
+// Быстрые кнопки сумм по играм — цены в играх разные.
+const GAME_AMOUNTS: Record<string, number[]> = {
+  Massive: [2, 100], // €2 — разогрев (только здесь); €30 в Massive нет
+  Furious: [30, 105], // большая покупка в Furious стоит €105
+};
+
+// В Furious большую покупку (€105) можно сделать ТОЛЬКО ОДИН РАЗ на телефон.
+// Исторические записи шли как €100 — учитываем оба номинала.
+export const FURIOUS_BIG = [100, 105];
+
+// Была ли уже успешная большая покупка Furious на этом телефоне.
+export async function hasFuriousBig(phoneId: string): Promise<boolean> {
+  const rows = (await db.execute(sql`
+    select 1 from purchases
+    where phone_id = ${phoneId} and game = 'Furious'
+      and amount in (100, 105) and result = 'done'
+    limit 1
+  `)) as unknown as unknown[];
+  return rows.length > 0;
+}
+
 const RESULT_LABEL: Record<PurchaseResultValue, string> = {
   done: '✅ Выполнено',
   support: '⚠️ Ошибка (саппорт)',
@@ -141,8 +162,8 @@ export async function onPurchaseGame(ctx: AppContext, text: string): Promise<voi
   await askAmount(ctx);
 }
 
-// Показ выбора суммы из denominations категории.
-// game_donate: числа [2,30,100] (€). vk_votes: [{units,price}] (голоса · €).
+// Показ выбора суммы. Для танков суммы зависят от ИГРЫ (цены разные),
+// для ВК — номиналы голосов из denominations категории.
 async function askAmount(ctx: AppContext): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_amount') return;
@@ -153,10 +174,15 @@ async function askAmount(ctx: AppContext): Promise<void> {
     .where(eq(purchaseCategories.code, flow.categoryCode))
     .limit(1);
   const raw = cat[0]?.denominations;
-  const denoms = Array.isArray(raw) ? [...raw] : [];
-  // €2-разогрев ведём ТОЛЬКО через Massive — кнопка €2 показывается только там.
-  // Furious и «другая игра» — боевые суммы (30/100) + «Другая сумма» текстом.
-  if (flow.categoryCode === 'game_donate' && flow.game === 'Massive') denoms.unshift(2);
+  let denoms = Array.isArray(raw) ? [...raw] : [];
+  if (flow.categoryCode === 'game_donate' && flow.game) {
+    // Цены в играх отличаются, поэтому кнопки задаём по игре:
+    //   Massive — €2 (разогрев, только здесь) и €100; €30 в Massive нет.
+    //   Furious — €30 и €105 (большая покупка стоит 105, не 100).
+    // Другая игра — общие суммы из denominations категории.
+    const perGame = GAME_AMOUNTS[flow.game];
+    if (perGame) denoms = [...perGame];
+  }
 
   const kb = new InlineKeyboard();
   let isVk = false;
@@ -403,11 +429,15 @@ async function showConfirm(ctx: AppContext): Promise<void> {
   if (flow.categoryCode === 'game_donate') {
     const a2 = tally.tank[2] ?? 0;
     const a30 = tally.tank[30] ?? 0;
-    const a100 = tally.tank[100] ?? 0;
-    tallyLines.push(`📊 Сегодня на …${imei}: €2×${a2} · €30×${a30} · €100×${a100}`);
+    const a100 = (tally.tank[100] ?? 0) + (tally.tank[105] ?? 0);
+    tallyLines.push(`📊 Сегодня на …${imei}: €2×${a2} · €30×${a30} · €100/105×${a100}`);
     const cur = Number(flow.amount);
-    if (cur === 2 || cur === 30 || cur === 100) {
+    if (cur === 2 || cur === 30 || cur === 100 || cur === 105) {
       tallyLines.push(`   ↳ эта €${cur} будет ${(tally.tank[cur] ?? 0) + 1}-й за сегодня`);
+    }
+    // В Furious большая покупка — только одна на телефон.
+    if (flow.game === 'Furious' && FURIOUS_BIG.includes(cur) && (await hasFuriousBig(flow.phoneId))) {
+      tallyLines.push('', '❗️ На этом телефоне большая покупка в Furious УЖЕ БЫЛА — второй не бывает!');
     }
   } else if (flow.categoryCode === 'vk_votes') {
     const after = tally.vkVotes + (flow.units ?? 0) * flow.qty;
