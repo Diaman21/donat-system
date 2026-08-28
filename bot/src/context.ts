@@ -8,6 +8,7 @@ export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
   | { kind: 'add_phone_dest'; imei: string; label: string | null }
+  | { kind: 'find_phone_imei' }
   | { kind: 'report_custom_date' }
   | { kind: 'purchase_category'; phoneId: string }
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }

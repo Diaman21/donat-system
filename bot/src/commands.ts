@@ -7,6 +7,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: 'vk', description: 'ВК-сводка по дням' },
   { command: 'period', description: 'Отчёт по датам (фильтр + детализация)' },
   { command: 'phones', description: 'Телефоны' },
+  { command: 'find', description: 'Поиск телефона по 4 цифрам IMEI' },
   { command: 'recent', description: 'Последние закупки' },
   { command: 'history', description: 'История телефона' },
   { command: 'report', description: 'Отчёт в группу' },

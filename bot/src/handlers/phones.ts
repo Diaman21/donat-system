@@ -18,6 +18,73 @@ export const PREP_CB = 'prep:'; // подготовленный → в рабо�
 export const PREPDEL_CB = 'prepdel:'; // спросить подтверждение удаления подготовленного
 export const PREPDELC_CB = 'prepdelc:'; // подтвердить удаление подготовленного
 
+// «🔍 Поиск по IMEI» — спрашиваем 4 цифры.
+export async function startFindPhone(ctx: AppContext): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+  ctx.session.flow = { kind: 'find_phone_imei' };
+  await ctx.reply('Введи последние 4 цифры IMEI — проверю, была ли трубка в работе:', {
+    reply_markup: cancelKb(),
+  });
+}
+
+// Поиск телефона по 4 цифрам IMEI: показываем ВСЕ совпадения (цифры повторяются,
+// умершие телефоны остаются в истории) с меткой, статусом и итогами.
+export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<void> {
+  const imei = text.trim();
+  if (!/^\d{4}$/.test(imei)) {
+    await ctx.reply('Нужны ровно 4 цифры. Попробуй ещё раз:', { reply_markup: cancelKb() });
+    return;
+  }
+  ctx.session.flow = undefined;
+
+  const found = await db
+    .select({
+      id: phones.id,
+      label: phones.label,
+      status: phones.status,
+      connectedAt: phones.connectedAt,
+      diedAt: phones.diedAt,
+      deathReason: phones.deathReason,
+      cnt: sql<number>`(select count(*)::int from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
+      total: sql<string>`(select coalesce(sum(${purchases.amount}), 0) from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
+    })
+    .from(phones)
+    .where(eq(phones.imeiLast4, imei))
+    .orderBy(desc(phones.connectedAt));
+
+  if (found.length === 0) {
+    await ctx.reply(
+      `🔍 …${imei} — в работе НЕ был.\nВ базе такого телефона нет, можно заводить.`,
+      { reply_markup: mainMenu() },
+    );
+    return;
+  }
+
+  const kb = new InlineKeyboard();
+  const lines = [`🔍 …${imei} — найдено: ${found.length}`, ''];
+  for (const p of found) {
+    const mark = p.status === 'active' ? '📱' : p.status === 'prepared' ? '🧰' : '🪦';
+    const label = p.label ? `«${p.label}»` : '(без метки)';
+    const state =
+      p.status === 'active'
+        ? 'в работе'
+        : p.status === 'prepared'
+          ? 'подготовлен'
+          : p.deathReason === 'error'
+            ? `умер ${fmtMskDate(p.diedAt!)} (ошибка Apple)`
+            : `выведен ${p.diedAt ? fmtMskDate(p.diedAt) : '—'} (вручную)`;
+    lines.push(`${mark} ${label} — ${state}`);
+    lines.push(
+      `   с ${fmtMskDate(p.connectedAt)} · ${p.cnt} покупок на €${Number(p.total).toFixed(2)}`,
+    );
+    if (p.cnt > 0) kb.text(`📜 ${p.label ?? `…${imei}`}`, `${HIST_CB}${p.id}`).row();
+  }
+
+  await ctx.reply(lines.join('\n'), {
+    reply_markup: kb.inline_keyboard.length > 0 ? kb : mainMenu(),
+  });
+}
+
 // «➕📱 Телефон» — старт привязки: спрашиваем 4 цифры IMEI.
 export async function startAddPhone(ctx: AppContext): Promise<void> {
   if (!(await requirePrivate(ctx))) return;

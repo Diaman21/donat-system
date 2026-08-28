@@ -256,7 +256,10 @@ donat-system/
 - ✅ БД: Neon (serverless Postgres, scale-to-zero), EU Central, бесплатный план
 - ✅ GitHub: приватный репо `Diaman21/donat-system`, ветка `main`. CI: typecheck на push.
 - ✅ **Бот `@donat_system_bot` на Vercel 24/7 (webhook).** Команды: start, stats,
-  vk, phones, recent, history, report, export, help, cancel. Закупки (категория/игра/
+  vk, period, phones, find, recent, history, report, export, help, cancel.
+  **🔍 Поиск по IMEI** — 4 цифры → была ли трубка в работе, метка, статус, итоги
+  (показывает ВСЕ совпадения: цифры повторяются, умершие остаются в истории).
+  Закупки (категория/игра/
   сумма-кнопками/результат/заметка/подтверждение; **ВК-мультизакуп** — счётчик кол-ва
   одинаковых покупок за раз), привязка/вывод телефонов, /stats с периодами,
   **/vk (read-only сводка ВК по дням: голосов/день, ⚠️/💀 по телефонам)**,

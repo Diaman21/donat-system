@@ -10,6 +10,8 @@ import {
   startAddPhone,
   onAddPhoneImei,
   onAddPhoneLabel,
+  startFindPhone,
+  onFindPhoneImei,
   listPhones,
   onAddPhoneDest,
   listPrepared,
@@ -96,6 +98,7 @@ export function createBot(): Bot<AppContext> {
   bot.command('vk', showVkReport);
   bot.command('period', startReport);
   bot.command('phones', listPhones);
+  bot.command('find', startFindPhone);
   bot.command('recent', showRecent);
   bot.command('history', showPhoneList);
   bot.command('report', sendReportToGroup);
@@ -110,6 +113,7 @@ export function createBot(): Bot<AppContext> {
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
   bot.hears(/Подготовленные$/, listPrepared);
+  bot.hears(/Поиск по IMEI$/, startFindPhone);
   bot.hears(/Статистика$/, showStats);
   bot.hears(/ВК$/, showVkReport);
   bot.hears(/Последние$/, showRecent);
@@ -201,6 +205,8 @@ export function createBot(): Bot<AppContext> {
         return onAddPhoneImei(ctx, ctx.message.text);
       case 'add_phone_label':
         return onAddPhoneLabel(ctx, ctx.message.text);
+      case 'find_phone_imei':
+        return onFindPhoneImei(ctx, ctx.message.text);
       case 'purchase_game_custom':
         return onPurchaseGame(ctx, ctx.message.text);
       case 'purchase_amount':

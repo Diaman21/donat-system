@@ -8,6 +8,7 @@ export const BTN = {
   addPhone: '➕📱 Телефон',
   phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
+  find: '🔍 Поиск по IMEI',
   stats: '📊 Статистика',
   vk: '🗳 ВК',
   recent: '📋 Последние',
@@ -33,6 +34,8 @@ export function mainMenu(): Keyboard {
     .text(BTN.stats)
     .text(BTN.vk)
     .text(BTN.recent)
+    .row()
+    .text(BTN.find)
     .row()
     .text(BTN.report)
     .text(BTN.delLast)
