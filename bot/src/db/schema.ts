@@ -4,6 +4,7 @@ import {
   pgEnum,
   uuid,
   bigint,
+  bigserial,
   text,
   boolean,
   timestamp,
@@ -117,6 +118,21 @@ export const botSessions = pgTable('bot_sessions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- order_queue — простой список заказов команды (миграция 0008) ----------
+// НЕ путать со старой `orders` (наследие «доски заказов», пустая).
+// С покупками сознательно НЕ связан — чтобы не мусорить данные коридора.
+export const orderQueue = pgTable('order_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  num: bigserial('num', { mode: 'number' }), // человеческий номер, генерирует БД
+  text: text('text').notNull(),
+  status: text('status').notNull().default('open'), // open | done | cancelled
+  createdBy: uuid('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  doneBy: uuid('done_by'),
+  doneAt: timestamp('done_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Типы для удобства ----------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -127,6 +143,7 @@ export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
 export type Purchase = typeof purchases.$inferSelect;
 export type NewPurchase = typeof purchases.$inferInsert;
+export type OrderQueueItem = typeof orderQueue.$inferSelect;
 
 export type UserRole = (typeof userRole.enumValues)[number];
 export type PhoneStatus = (typeof phoneStatus.enumValues)[number];

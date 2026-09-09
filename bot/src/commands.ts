@@ -3,6 +3,8 @@ import type { BotCommand } from 'grammy/types';
 // Команды бота (показываются в меню Telegram при вводе «/»).
 export const BOT_COMMANDS: BotCommand[] = [
   { command: 'start', description: 'Меню' },
+  { command: 'order', description: 'Добавить заказ' },
+  { command: 'orders', description: 'Открытые заказы' },
   { command: 'stats', description: 'Статистика' },
   { command: 'vk', description: 'ВК-сводка по дням' },
   { command: 'period', description: 'Отчёт по датам (фильтр + детализация)' },

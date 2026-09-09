@@ -56,6 +56,13 @@ import { exportCsv } from './handlers/export.js';
 import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js';
 import { showVkReport } from './handlers/vk.js';
 import {
+  startAddOrder,
+  onOrderText,
+  listOrders,
+  onOrderClose,
+  ORD_CB,
+} from './handlers/orders.js';
+import {
   startReport,
   onReportCallback,
   onReportCustomDate,
@@ -99,6 +106,8 @@ export function createBot(): Bot<AppContext> {
   bot.command('period', startReport);
   bot.command('phones', listPhones);
   bot.command('find', startFindPhone);
+  bot.command('order', startAddOrder);
+  bot.command('orders', listOrders);
   bot.command('recent', showRecent);
   bot.command('history', showPhoneList);
   bot.command('report', sendReportToGroup);
@@ -112,6 +121,8 @@ export function createBot(): Bot<AppContext> {
   bot.hears(/Закупка$/, startPurchase);
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
+  bot.hears(/Заказы$/, listOrders); // «📥 Заказы» — раньше «📝 Заказ», чтобы не путались
+  bot.hears(/Заказ$/, startAddOrder);
   bot.hears(/Подготовленные$/, listPrepared);
   bot.hears(/Поиск по IMEI$/, startFindPhone);
   bot.hears(/Статистика$/, showStats);
@@ -149,6 +160,14 @@ export function createBot(): Bot<AppContext> {
         return void (await onKillConfirm(ctx, data.slice(KILLC_CB.length)));
       }
       if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
+      if (data.startsWith(ORD_CB)) {
+        const rest = data.slice(ORD_CB.length); // done:<id> | cancel:<id>
+        const sep = rest.indexOf(':');
+        if (sep > 0) {
+          return void (await onOrderClose(ctx, rest.slice(0, sep), rest.slice(sep + 1)));
+        }
+        return;
+      }
       if (data.startsWith(REP_CB)) {
         return void (await onReportCallback(ctx, data.slice(REP_CB.length)));
       }
@@ -207,6 +226,8 @@ export function createBot(): Bot<AppContext> {
         return onAddPhoneLabel(ctx, ctx.message.text);
       case 'find_phone_imei':
         return onFindPhoneImei(ctx, ctx.message.text);
+      case 'order_text':
+        return onOrderText(ctx, ctx.message.text);
       case 'purchase_game_custom':
         return onPurchaseGame(ctx, ctx.message.text);
       case 'purchase_amount':
