@@ -11,9 +11,12 @@ export function cancelKb(base?: InlineKeyboard): InlineKeyboard {
 }
 
 // Сброс текущего ввода и возврат в меню.
+// Заказ, который выполняли, тоже сбрасываем — иначе он мог бы закрыться
+// следующей, уже не связанной с ним покупкой.
 export async function handleCancel(ctx: AppContext): Promise<void> {
   const had = ctx.session.flow !== undefined;
   ctx.session.flow = undefined;
+  ctx.session.pendingOrderId = undefined;
   await ctx.reply(had ? 'Отменено.' : 'Нечего отменять.', { reply_markup: menuFor(ctx) });
 }
 

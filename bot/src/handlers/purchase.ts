@@ -7,6 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
+import { closeOrderIfDone } from './orders.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -56,7 +57,16 @@ const CATEGORY_LABEL: Record<string, string> = {
   vk_votes: '🗳 Голоса ВК',
 };
 
-// «➕ Закупка» — шаг 0: выбор телефона (inline-кнопки активных).
+// Закупка БЕЗ заказа («🛒 Без заказа»): разогрев €2 и всё, что не по заказу.
+// Явно сбрасываем pendingOrderId — иначе «висящий» заказ закрылся бы этой покупкой.
+export async function startPurchaseStandalone(ctx: AppContext): Promise<void> {
+  ctx.session.pendingOrderId = undefined;
+  await startPurchase(ctx);
+}
+
+// Шаг 0 закупки: выбор телефона (inline-кнопки активных).
+// Вызывается и из «🛒 Без заказа», и из «✅ Выполнить» в списке заказов
+// (там pendingOrderId уже проставлен — покупка привяжется к заказу).
 export async function startPurchase(ctx: AppContext): Promise<void> {
   if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
@@ -555,6 +565,9 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // Если серия закончилась ⚠️/💀 — ошибка всегда у ПОСЛЕДНЕЙ попытки: успешные
   // пишем ✅, иначе N строк long/support исказят аналитику смертей (и триггер
   // смерти сработал бы N раз).
+  // Заказ, по которому делали закупку (если пришли из «📥 Заказы» → «✅ Выполнить»).
+  const orderId = ctx.session.pendingOrderId ?? null;
+
   const rows = Array.from({ length: flow.qty }, (_, i) => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
@@ -565,11 +578,13 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     notes: flow.note,
     internet,
     units: flow.units,
+    orderQueueId: orderId,
   }));
   await db.insert(purchases).values(rows);
 
   const { phoneId, result, amount, game, note, units, qty } = flow;
   ctx.session.flow = undefined;
+  ctx.session.pendingOrderId = undefined;
 
   const multi = qty > 1;
   const totalEur = (Number(amount) * qty).toFixed(2);
@@ -585,6 +600,13 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     internet ? `Интернет: ${INTERNET_LABEL[internet]}` : null,
     note ? `📝 ${note}` : null,
   ].filter(Boolean);
+
+  // Заказ закрываем ТОЛЬКО при ✅. При ⚠️/💀 покупка была, но заказ не выполнен:
+  // саппорт — повторить завтра, смерть — доделать на другом телефоне.
+  if (orderId) {
+    const closed = await closeOrderIfDone(ctx, orderId, result);
+    parts.push('', closed);
+  }
 
   // При 💀 — телефон умер (триггер). Показываем «надгробие».
   if (result === 'long') {

@@ -31,6 +31,7 @@ import {
 } from './handlers/phones.js';
 import {
   startPurchase,
+  startPurchaseStandalone,
   onPhoneSelected,
   onCategorySelected,
   onGameSelected,
@@ -59,7 +60,8 @@ import {
   startAddOrder,
   onOrderText,
   listOrders,
-  onOrderClose,
+  onOrderExecute,
+  onOrderCancel,
   ORD_CB,
 } from './handlers/orders.js';
 import {
@@ -118,11 +120,14 @@ export function createBot(): Bot<AppContext> {
   // Кнопки главного меню. Матчим по СЛОВУ, без привязки к эмодзи —
   // чтобы старые закешированные кнопки (со старыми иконками) тоже работали
   // и смена иконок в будущем не ломала роутинг.
-  bot.hears(/Закупка$/, startPurchase);
+  // «🛒 Без заказа» — разогрев и всё, что не по заказу. /Закупка$/ оставлен для
+  // старых закешированных клавиатур со «🛒 Закупка».
+  bot.hears(/Без заказа$/, startPurchaseStandalone);
+  bot.hears(/Закупка$/, startPurchaseStandalone);
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
   bot.hears(/Заказы$/, listOrders); // «📥 Заказы» — раньше «📝 Заказ», чтобы не путались
-  bot.hears(/Заказ$/, startAddOrder);
+  bot.hears(/Заказ$/, startAddOrder); // старая кнопка «📝 Заказ» — на всякий случай
   bot.hears(/Подготовленные$/, listPrepared);
   bot.hears(/Поиск по IMEI$/, startFindPhone);
   bot.hears(/Статистика$/, showStats);
@@ -161,10 +166,19 @@ export function createBot(): Bot<AppContext> {
       }
       if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
       if (data.startsWith(ORD_CB)) {
-        const rest = data.slice(ORD_CB.length); // done:<id> | cancel:<id>
+        const rest = data.slice(ORD_CB.length); // add | done:<id> | cancel:<id>
+        if (rest === 'add') return void (await startAddOrder(ctx));
         const sep = rest.indexOf(':');
         if (sep > 0) {
-          return void (await onOrderClose(ctx, rest.slice(0, sep), rest.slice(sep + 1)));
+          const action = rest.slice(0, sep);
+          const id = rest.slice(sep + 1);
+          // «done» = выполнить: заказ запоминается в сессии и сразу запускается
+          // цепочка закупки; заказ закроется в её конце и только при ✅
+          if (action === 'done') {
+            if (await onOrderExecute(ctx, id)) await startPurchase(ctx);
+            return;
+          }
+          if (action === 'cancel') return void (await onOrderCancel(ctx, id));
         }
         return;
       }

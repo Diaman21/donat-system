@@ -4,9 +4,10 @@ import type { AppContext } from '../context.js';
 
 // Метки кнопок главного меню (используются и при отрисовке, и в роутинге).
 export const BTN = {
-  purchase: '🛒 Закупка',
-  addOrder: '📝 Заказ',
+  // Основная работа идёт от заказа: «📥 Заказы» → «✅ Выполнить» запускает закупку.
+  // «🛒 Без заказа» остаётся для разогрева €2 и всего, что не по заказу.
   orders: '📥 Заказы',
+  purchase: '🛒 Без заказа',
   addPhone: '➕📱 Телефон',
   phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
@@ -27,10 +28,9 @@ export function greeting(user: User): string {
 // Главное меню оператора/модератора (логгер закупок).
 export function mainMenu(): Keyboard {
   return new Keyboard()
-    .text(BTN.purchase)
-    .row()
-    .text(BTN.addOrder)
     .text(BTN.orders)
+    .row()
+    .text(BTN.purchase)
     .row()
     .text(BTN.addPhone)
     .text(BTN.phones)

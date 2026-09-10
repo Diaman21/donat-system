@@ -22,6 +22,39 @@ function short(t: string): string {
   return one.length > MAX_TEXT ? `${one.slice(0, MAX_TEXT)}…` : one;
 }
 
+// Закрыть заказ после закупки — ТОЛЬКО если покупка прошла успешно.
+// При ⚠️ (саппорт) и 💀 (смерть телефона) заказ остаётся открытым: покупка была,
+// но заказ не выполнен — саппорт повторяем завтра, смерть доделываем на другом телефоне.
+// Возвращает строку для итогового сообщения.
+export async function closeOrderIfDone(
+  ctx: AppContext,
+  orderId: string,
+  result: 'done' | 'support' | 'long',
+): Promise<string> {
+  const user = ctx.dbUser;
+  const rows = await db
+    .select({ num: orderQueue.num, status: orderQueue.status })
+    .from(orderQueue)
+    .where(eq(orderQueue.id, orderId))
+    .limit(1);
+  const o = rows[0];
+  if (!o) return '⚠️ Заказ не найден — покупка записана без привязки.';
+
+  if (result !== 'done') {
+    return `📌 Заказ #${o.num} ОСТАЛСЯ ОТКРЫТЫМ (покупка не прошла) — доделать позже.`;
+  }
+  if (o.status !== 'open') {
+    return `📌 Заказ #${o.num} уже был закрыт ранее.`;
+  }
+
+  await db
+    .update(orderQueue)
+    .set({ status: 'done', doneBy: user?.id ?? null, doneAt: new Date() })
+    .where(and(eq(orderQueue.id, orderId), eq(orderQueue.status, 'open')));
+  const open = await countOpen();
+  return `✅ Заказ #${o.num} выполнен и закрыт. Открытых осталось: ${open}.`;
+}
+
 // Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
 async function teamMentions(): Promise<string> {
   const team = await db
@@ -142,22 +175,28 @@ export async function listOrders(ctx: AppContext): Promise<void> {
     '',
   ];
 
+  const allowEdit = ctx.chat?.type === 'private';
+  const kb = new InlineKeyboard();
+
   if (open.length === 0) {
-    await ctx.reply([...head, 'Открытых заказов нет 🎉'].join('\n'));
+    if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`);
+    await ctx.reply([...head, 'Открытых заказов нет 🎉'].join('\n'), {
+      reply_markup: allowEdit ? kb : undefined,
+    });
     return;
   }
 
   const shown = open.slice(0, MAX_OPEN_SHOWN);
   const lines: string[] = [];
-  const allowEdit = ctx.chat?.type === 'private';
-  const kb = new InlineKeyboard();
 
   for (const o of shown) {
     lines.push(`#${o.num} · @${o.author ?? '—'}, ${fmtMsk(o.createdAt)}`);
     lines.push(short(o.text));
     lines.push('');
     if (allowEdit) {
-      kb.text(`✅ #${o.num}`, `${ORD_CB}done:${o.id}`)
+      // «Выполнить» запускает обычную цепочку закупки; заказ закроется в конце,
+      // и только если покупка прошла успешно.
+      kb.text(`✅ Выполнить #${o.num}`, `${ORD_CB}done:${o.id}`)
         .text(`🗑 #${o.num}`, `${ORD_CB}cancel:${o.id}`)
         .row();
     }
@@ -165,33 +204,62 @@ export async function listOrders(ctx: AppContext): Promise<void> {
   if (open.length > shown.length) {
     lines.push(`…и ещё ${open.length - shown.length} открытых (показаны первые ${MAX_OPEN_SHOWN}).`);
   }
+  if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`);
 
   await ctx.reply([...head, ...lines].join('\n'), {
     reply_markup: allowEdit ? kb : undefined,
   });
 }
 
-// Закрытие заказа: выполнен или отменён.
-export async function onOrderClose(ctx: AppContext, action: string, id: string): Promise<void> {
+// «✅ Выполнить» — НЕ закрывает заказ сразу, а готовит запуск цепочки закупки.
+// Заказ закроется в самом конце (onNetSelected → closeOrderIfDone) и только при ✅.
+//
+// Возвращает true, если можно запускать закупку. Саму закупку вызывает bot.ts —
+// специально, чтобы orders.ts не импортировал purchase.ts: там уже есть импорт
+// closeOrderIfDone отсюда, и вышел бы циклический импорт (на Vercel-ESM опасно).
+export async function onOrderExecute(ctx: AppContext, id: string): Promise<boolean> {
+  if (!(await requirePrivate(ctx))) return false;
+  if (!(await requireOperator(ctx))) return false;
+
+  const rows = await db
+    .select({ num: orderQueue.num, text: orderQueue.text, status: orderQueue.status })
+    .from(orderQueue)
+    .where(eq(orderQueue.id, id))
+    .limit(1);
+  const o = rows[0];
+  if (!o) {
+    await ctx.reply('Заказ не найден.');
+    await listOrders(ctx);
+    return false;
+  }
+  if (o.status !== 'open') {
+    await ctx.reply('Этот заказ уже закрыт.');
+    await listOrders(ctx);
+    return false;
+  }
+
+  ctx.session.pendingOrderId = id;
+  await ctx.reply(`▶️ Выполняем заказ #${o.num}:\n${short(o.text)}\n\nТеперь записываем закупку.`);
+  return true;
+}
+
+// «🗑 Отменить» — заказ отменён без закупки (клиент отвалился, ошиблись при вводе).
+export async function onOrderCancel(ctx: AppContext, id: string): Promise<void> {
   if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
   const user = ctx.dbUser;
   if (!user) return;
 
-  const status = action === 'done' ? 'done' : 'cancelled';
   const upd = await db
     .update(orderQueue)
-    .set({ status, doneBy: user.id, doneAt: new Date() })
+    .set({ status: 'cancelled', doneBy: user.id, doneAt: new Date() })
     .where(and(eq(orderQueue.id, id), eq(orderQueue.status, 'open')))
     .returning({ num: orderQueue.num });
 
   if (upd.length === 0) {
     await ctx.reply('Этот заказ уже закрыт (или не найден).');
-    await listOrders(ctx);
-    return;
+    return void (await listOrders(ctx));
   }
-
-  const label = status === 'done' ? '✅ выполнен' : '🗑 отменён';
-  await ctx.reply(`Заказ #${upd[0]!.num} — ${label}.`);
+  await ctx.reply(`🗑 Заказ #${upd[0]!.num} отменён.`);
   await listOrders(ctx);
 }

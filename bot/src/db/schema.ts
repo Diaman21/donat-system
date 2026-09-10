@@ -104,6 +104,9 @@ export const purchases = pgTable('purchases', {
   game: text('game'), // игра (напр. «Массив»), опционально — миграция 0002
   internet: text('internet'), // 'mobile' | 'wifi' — тип интернета, миграция 0005
   units: integer('units'), // кол-во единиц (для ВК — голоса), миграция 0006
+  // Заказ из order_queue, если покупка делалась по заказу (миграция 0009).
+  // NULL — норма: разогрев €2 и ВК идут без заказа.
+  orderQueueId: uuid('order_queue_id'),
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
