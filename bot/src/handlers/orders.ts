@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { orderQueue, users } from '../db/schema.js';
@@ -7,6 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, requirePrivate } from './common.js';
 import { fmtMsk } from '../format.js';
+import { env } from '../config.js';
 
 // «📥 Заказы» — простой список задач команды: скинул текст → отметил выполненным.
 // С покупками сознательно НЕ связан (чтобы не мусорить данные «зелёного коридора»).
@@ -19,6 +20,45 @@ const MAX_TEXT = 150; // длинные заказы режем в списке
 function short(t: string): string {
   const one = t.replace(/\s+/g, ' ').trim();
   return one.length > MAX_TEXT ? `${one.slice(0, MAX_TEXT)}…` : one;
+}
+
+// Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
+async function teamMentions(): Promise<string> {
+  const team = await db
+    .select({ username: users.username })
+    .from(users)
+    .where(and(inArray(users.role, ['operator', 'moderator']), eq(users.isActive, true)));
+  return team
+    .filter((u) => u.username)
+    .map((u) => `@${u.username}`)
+    .join(' ');
+}
+
+// Уведомление в группу о новом заказе. Ошибка отправки не должна ломать
+// сохранение заказа — он уже в базе, а группа просто не получит пинг.
+async function notifyGroupNewOrder(
+  ctx: AppContext,
+  num: number,
+  body: string,
+  author: string | null,
+): Promise<void> {
+  if (!env.groupChatId) return;
+  try {
+    const mentions = await teamMentions();
+    const open = await countOpen();
+    const text = [
+      `📥 НОВЫЙ ЗАКАЗ #${num}`,
+      `от @${author ?? '—'} · ${fmtMsk(new Date())}`,
+      '',
+      body.length > 3000 ? `${body.slice(0, 3000)}…` : body,
+      '',
+      mentions ? `👉 ${mentions} — в работу!` : '👉 В работу!',
+      `Открытых заказов: ${open}`,
+    ].join('\n');
+    await ctx.api.sendMessage(env.groupChatId, text);
+  } catch (err) {
+    console.error('Не удалось отправить заказ в группу:', err);
+  }
 }
 
 // «📝 Заказ» — попросить текст заказа.
@@ -47,9 +87,12 @@ export async function onOrderText(ctx: AppContext, text: string): Promise<void> 
     .values({ text: body, createdBy: user.id })
     .returning({ num: orderQueue.num });
 
+  const num = ins[0]!.num;
+  await notifyGroupNewOrder(ctx, num, body, user.username);
+
   const open = await countOpen();
   await ctx.reply(
-    `✅ Заказ #${ins[0]!.num} добавлен.\nОткрытых сейчас: ${open}.`,
+    `✅ Заказ #${num} добавлен.\nОткрытых сейчас: ${open}.\n📢 Отправил в группу с тегами.`,
     { reply_markup: mainMenu() },
   );
 }
