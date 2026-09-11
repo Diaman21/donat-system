@@ -52,7 +52,7 @@
 | Задача | Расписание | Что делает |
 |---|---|---|
 | `api/cron-report.ts` | ежедневно 12:00 МСК | сводка за сутки в группу |
-| `api/cron-export.ts` | пн 12:05 МСК | CSV-бэкап всех покупок в группу |
+| `api/cron-export.ts` | ежедневно 12:05 МСК | полный бэкап в группу: JSON (все таблицы) + CSV покупок |
 
 ⚠️ Лимит Vercel Hobby — **2 cron-задачи, обе заняты**.
 
@@ -75,7 +75,8 @@
 | Переменная | Назначение |
 |---|---|
 | `DATABASE_URL` | connection string Neon (pooler) |
-| `TELEGRAM_BOT_TOKEN` | токен от [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_BOT_TOKEN` | токен **боевого** бота от [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_BOT_TOKEN_DEV` | токен **отдельного тестового** бота — только для локального запуска. В Vercel не добавлять |
 | `TELEGRAM_GROUP_ID` | группа «Pattern_analyst 🧮» для сводок и бэкапов |
 | `TELEGRAM_WEBHOOK_SECRET` | защита webhook-эндпоинта |
 | `TELEGRAM_MODERATOR_CHAT_ID` | куда слать уведомления об ошибках |
@@ -86,10 +87,19 @@
 ```bash
 npm install                       # установить зависимости
 npm run typecheck                 # проверка типов (tsc --noEmit) — гоняем перед коммитом
+npm test                          # тесты чистой логики — тоже перед коммитом
 npm run db:check                  # проверить подключение к Neon
-npm run dev                       # long polling с авто-перезапуском
-npm start                         # long polling
+npm run dev                       # long polling с авто-перезапуском (нужен dev-токен!)
+npm start                         # long polling (нужен dev-токен!)
 ```
+
+**Тесты** (`node --test` + `tsx`, без внешних библиотек) покрывают только чистую логику:
+`src/handlers/order-parse.test.ts` — разбор состава заказа, `src/format.test.ts` —
+календарь МСК. Эти модули намеренно не ходят в БД, поэтому тесты гоняются в CI без
+секретов и без сети. Интерфейс бота тестами не покрываем.
+
+⚠️ **`npm run dev` / `npm start` требуют `TELEGRAM_BOT_TOKEN_DEV`** — токен отдельного
+тестового бота. Без него запуск остановится и объяснит, что делать (см. «Засады» ниже).
 
 Утилиты администрирования (через `npx tsx`):
 
@@ -108,15 +118,16 @@ bot/
 ├── api/
 │   ├── webhook.ts          точка входа Vercel (webhookCallback 'https')
 │   ├── cron-report.ts      ежедневная сводка в группу
-│   └── cron-export.ts      еженедельный CSV-бэкап
+│   └── cron-export.ts      ежедневный полный бэкап (JSON + CSV)
 ├── vercel.json             builds + routes + crons (явно, автодетект не работает)
 └── src/
-    ├── index.ts            локальный запуск (long polling, снимает webhook!)
+    ├── index.ts            локальный запуск — ТОЛЬКО с TELEGRAM_BOT_TOKEN_DEV
     ├── bot.ts              сборка бота: session, роутинг (hears/callback/text)
     ├── commands.ts         список команд для меню Telegram
     ├── config.ts           чтение и валидация .env
     ├── context.ts          FlowState (мастер-формы) + ctx.dbUser
-    ├── format.ts           время по МСК
+    ├── format.ts           ⭐ время И календарь МСК — единственное место
+    ├── format.test.ts      тесты календаря
     ├── notify.ts           уведомления модератору
     ├── setup-webhook.ts    регистрация webhook и команд
     ├── db/
@@ -132,6 +143,9 @@ bot/
         ├── common.ts       отмена, requirePrivate
         ├── phones.ts       привязка, список, подготовленные, вывод
         ├── purchase.ts     пошаговый ввод закупки (+ ВК-мультизакуп)
+        ├── orders.ts       📥 Заказы: список, добавление, выполнение, закрытие
+        ├── order-parse.ts  разбор состава заказа из текста (чистый, без БД)
+        ├── order-parse.test.ts  тесты разбора
         ├── stats.ts        /stats + алерт вывода бюджета + сводка в группу
         ├── vk.ts           /vk — голоса по дням
         ├── report.ts       /period — отчёт-проводник по датам
@@ -139,8 +153,17 @@ bot/
         ├── recent.ts       /recent + откат последней
         ├── postmortem.ts   «надгробие» при смерти телефона
         ├── export.ts       CSV (buildPurchasesCsv — общий с cron-бэкапом)
+        ├── backup.ts       полный JSON-дамп всех таблиц
         └── help.ts         /help
 ```
+
+> ⚠️ **Даты и время — только через `format.ts`.** Арифметика МСК (`mskTodayIso`,
+> `daysBetweenIso`, `addDaysIso`, `ddmmOf`, `hhmmMsk`) раньше была скопирована в
+> `report.ts` и `stats.ts`; правка в одном месте развела бы отчёт со статистикой.
+> Новых копий не заводить.
+> ⚠️ **`orders.ts` НЕ импортирует `purchase.ts`** — в `purchase.ts` уже есть импорт
+> `closeOrderIfDone`, обратный импорт дал бы цикл, опасный на Vercel-ESM. Поэтому
+> `onOrderExecute` возвращает `boolean`, а цепочку закупки запускает `bot.ts`.
 
 ## Деплой на Vercel (webhook, 24/7)
 
@@ -154,8 +177,15 @@ Push в `main` → Vercel авто-передеплой. **Root Directory = `bot
    для Vercel Node-runtime, иначе `FUNCTION_INVOCATION_FAILED`.
 3. **vercel.json:** функции прописаны явно (`builds` + `routes`) — автодетект `api/` не сработал.
 4. **Сессии в БД** (`bot_sessions`), т.к. serverless не хранит память между запросами.
-5. **Не запускать `npm start` локально, пока бот на Vercel** — `index.ts` делает
-   `deleteWebhook` и переводит бота на long polling. Вернуть: `setup-webhook`.
+5. **Локальный запуск — только с отдельным ботом.** Telegram не даёт одному боту
+   работать и по webhook, и по long polling: `index.ts` делает `deleteWebhook`, и
+   боевой бот на Vercel замолкает — молча, без ошибок и уведомлений.
+   Раньше это было правилом «не запускай `npm start`», то есть держалось на памяти.
+   Теперь закрыто кодом: без `TELEGRAM_BOT_TOKEN_DEV` запуск останавливается.
+   Заводится за минуту: @BotFather → `/newbot` → токен в `.env`.
+   ⚠️ База у тестового бота **общая с боевой** — вбитые через него покупки попадут
+   в реальную статистику. Для проверки интерфейса нормально, для экспериментов — нет.
+   Если webhook всё же слетел (например, снимали вручную): `npm run setup-webhook`.
 6. **Neon scale-to-zero:** засыпает через ~5 мин, просыпается 1–2 с — первый запрос может подтормозить.
 
 ## Важно про схему БД

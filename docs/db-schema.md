@@ -1,6 +1,6 @@
 # Схема БД — donat-system
 
-> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0007`.
+> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0011`.
 > Применены в **Neon** (serverless Postgres, EU Central, бесплатный план) **вручную**
 > через Neon SQL Editor. Claude DDL не применяет.
 > Зеркало схемы в коде — [`bot/src/db/schema.ts`](../bot/src/db/schema.ts) (только типы и запросы).
@@ -18,6 +18,8 @@
 | `0007_phone_prepared.sql` | значение `prepared` в enum `phone_status` |
 | `0008_order_queue.sql` | `order_queue` — простой список заказов команды |
 | `0009_purchase_order_link.sql` | `purchases.order_queue_id` — связь покупки с заказом |
+| `0010_order_items.sql` | `order_queue.items` — состав заказа (сколько закупок нужно) |
+| `0011_drop_legacy_orders.sql` | **удалены** таблица `orders`, `purchases.order_id`, enum `order_status` |
 
 **Никогда не редактируем уже применённую миграцию** — только новый файл `000N_*.sql`.
 
@@ -65,7 +67,7 @@ erDiagram
     purchases {
         uuid id PK
         uuid phone_id FK
-        uuid order_id FK "всегда NULL"
+        uuid order_queue_id FK "заказ, если делали по нему"
         uuid operator_id FK
         uuid category_id FK
         numeric amount "€"
@@ -87,6 +89,7 @@ erDiagram
         uuid id PK
         bigserial num UK "номер #37 для людей"
         text text "заказ как скинули"
+        jsonb items "состав: сколько закупок нужно"
         text status "open / done / cancelled"
         uuid created_by FK
         uuid done_by FK
@@ -94,9 +97,10 @@ erDiagram
     }
 ```
 
-> Таблица **`orders` существует, но не используется** — наследие модели «доска заказов»,
-> от которой отказались. `purchases.order_id` всегда `NULL`. Не удаляем (не мешает),
-> но и не заполняем.
+> Рабочих таблиц ровно **шесть**. Старая `orders` (наследие модели «доска заказов»,
+> от которой отказались) и колонка `purchases.order_id` **удалены** миграцией `0011`
+> — они стояли пустыми, а две «заказные» колонки на `purchases` сбивали с толку.
+> Заказы живут в `order_queue`, связь с покупкой — `purchases.order_queue_id`.
 
 ## Перечисления (enums)
 
@@ -105,7 +109,9 @@ erDiagram
 | `user_role` | `customer`, `operator`, `moderator` | `users.role` |
 | `phone_status` | `active`, `dead`, `prepared` | `phones.status` (`prepared` — резерв, не в лимите ≤3; миграция `0007`) |
 | `purchase_result` | `done` ✅, `support` ⚠️, `long` 💀 | `purchases.result` |
-| `order_status` | `new`, `taken`, … | `orders.status` (не используется) |
+
+> Enum `order_status` удалён вместе с таблицей `orders` (миграция `0011`).
+> У `order_queue.status` тип обычный `text` — отдельный enum ему не нужен.
 
 ## Таблицы
 
@@ -160,7 +166,7 @@ erDiagram
 | Поле | Тип | Назначение |
 |---|---|---|
 | `phone_id` | `uuid` → `phones.id` | с какого телефона |
-| `order_id` | `uuid` nullable | **всегда NULL** (заказов в боте нет) |
+| `order_queue_id` | `uuid` nullable → `order_queue.id` | заказ, по которому сделана (миграция `0009`); NULL у разогрева и ВК |
 | `operator_id` | `uuid` → `users.id` | кто вбил |
 | `category_id` | `uuid` → `purchase_categories.id` | 🎮 танки / 🗳 ВК |
 | `amount` | `numeric(12,2)` CHECK > 0 | **сумма в €** |
@@ -171,7 +177,8 @@ erDiagram
 | `purchased_at` | `timestamptz` | **время записи = время покупки** — вбивать сразу! |
 | `notes` | `text` | заметка оператора |
 
-**Индексы:** `(phone_id, purchased_at)`, `(order_id)`, `(result)`, `(category_id)`.
+**Индексы:** `(phone_id, purchased_at)`, `(result)`, `(category_id)`.
+Индекс по `order_id` удалён вместе с колонкой (миграция `0011`).
 
 > ⚠️ **Тонкости для аналитики:**
 > 1. Строка 💀 `long` — это **попытка**, а не оплата: её `amount` телефон по факту не потратил
@@ -182,23 +189,34 @@ erDiagram
 ### `order_queue` — список заказов команды (миграция `0008`)
 
 Внутренний список задач для двух операторов: скинул текст заказа → отметил
-выполненным или отменённым. **НЕ путать со старой пустой `orders`** — та под
-отвергнутую модель «доска заказов» с заказчиками и карточками.
+выполненным или отменённым. Это НЕ доска заказчиков — от неё отказались
+осознанно (см. анти-цели в `TODO.md`).
 
 | Поле | Тип | Назначение |
 |---|---|---|
 | `num` | `bigserial` UNIQUE | человеческий номер — «Заказ #37» |
 | `text` | `text` | заказ как скинули, свободный текст |
+| `items` | `jsonb` | состав заказа (миграция `0010`), NULL = ещё не подтверждён |
 | `status` | `text` CHECK | `open` / `done` / `cancelled` |
 | `created_by` | `uuid` → `users.id` | кто добавил |
 | `done_by` / `done_at` | `uuid` / `timestamptz` | кто и когда закрыл |
+
+**Состав заказа** (`items`, миграция `0010`) — сколько закупок требует заказ:
+
+```json
+{ "total": 2, "list": [ {"label":"орден","amount":30,"game":"Furious"},
+                        {"label":"прем год","amount":105,"game":"Furious"} ] }
+```
+
+Бот распознаёт состав из текста (`bot/src/handlers/order-parse.ts`), оператор
+подтверждает кнопкой. Заказ закрывается, только когда успешных закупок ≥ `total`.
+Если состав задавали вручную числом, `list` пуст, а `total` заполнен.
+⚠️ `bigserial` не откатывается — в нумерации заказов бывают пропуски, это нормально.
 
 **Связь с покупками** (миграция `0009`): `purchases.order_queue_id` → `order_queue.id`,
 nullable. Заполняется, когда закупку делают через «📥 Заказы → ✅ Выполнить».
 Покупки без заказа (разогрев €2, ВК) остаются с NULL — их большинство.
 
-> ⚠️ Старая колонка `purchases.order_id` НЕ используется: у неё FK на пустую `orders`.
-> Она остаётся NULL навсегда. Для заказов — только `order_queue_id`.
 > ⚠️ На аналитику «зелёного коридора» связь не влияет: в её запросах эта колонка
 > не участвует. Опасение было про лишний шаг в флоу закупки — его нет, потому что
 > идём от заказа и контекст уже известен.
@@ -276,11 +294,16 @@ select ph.imei_last4, (p.purchased_at at time zone 'Europe/Moscow')::date as d,
 > «зелёного коридора» после восстановления не собрать. JSON содержит `phone_id` —
 > точную привязку покупок к аппаратам.
 
-`bot_sessions` не бэкапим (временное состояние ввода), старую пустую `orders` — тоже.
+`bot_sessions` не бэкапим — это временное состояние ввода, ценности нет.
+
+> ⚠️ **Дампы, снятые ДО 12.09.2026**, содержат у `purchases` лишнюю колонку
+> `order_id` — наследие таблицы `orders`, удалённой миграцией `0011`. Во всех
+> строках там `NULL`, данных в ней нет: при восстановлении старого дампа эту
+> колонку нужно просто отбросить, иначе вставка упадёт на несуществующем поле.
 
 ### Как восстановить из JSON
 
-1. Создать пустую базу и применить миграции `0001`…`0008` по порядку.
+1. Создать пустую базу и применить миграции `0001`…`0011` по порядку.
 2. Взять последний `backup-full-*.json` из группы.
 3. Вставить строки **в порядке ключа `meta.tables`** — он учитывает зависимости
    внешних ключей: `users` → `purchase_categories` → `phones` → `purchases` → `order_queue`.
