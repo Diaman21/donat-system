@@ -68,6 +68,31 @@ export function parseOrder(text: string): OrderPlan {
   return { list, total: list.length, hintGame: game };
 }
 
+// «1 закупка · 2 закупки · 5 закупок»
+export function plural(n: number): string {
+  const last = n % 10;
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 14) return `${n} закупок`;
+  if (last === 1) return `${n} закупка`;
+  if (last >= 2 && last <= 4) return `${n} закупки`;
+  return `${n} закупок`;
+}
+
+// Сколько закупок нужно по заказу (из items.total; по умолчанию 1).
+// items приходит из jsonb-колонки, поэтому тип unknown и проверки по месту.
+export function plannedTotal(items: unknown): number {
+  const t = (items as { total?: number } | null)?.total;
+  return typeof t === 'number' && t > 0 ? t : 1;
+}
+
+// Что ещё не куплено по заказу — для подсказки «осталось…».
+export function remainingLabels(items: unknown, doneCount: number): string {
+  const list = (items as { list?: { label: string; amount: number }[] } | null)?.list;
+  if (!Array.isArray(list) || list.length === 0) return '';
+  const left = list.slice(doneCount);
+  return left.length ? left.map((i) => `${i.label} €${i.amount}`).join(' + ') : '';
+}
+
 // Человекочитаемый разбор для экрана подтверждения.
 export function describePlan(p: OrderPlan): string[] {
   if (p.list.length === 0) {

@@ -9,7 +9,8 @@
     "start": "tsx src/index.ts",
     "db:check": "tsx src/db/check.ts",
     "setup-webhook": "tsx src/setup-webhook.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "dotenv": "^17.4.2",

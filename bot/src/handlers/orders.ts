@@ -2,7 +2,13 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { orderQueue, purchases, users } from '../db/schema.js';
-import { parseOrder, describePlan } from './order-parse.js';
+import {
+  parseOrder,
+  describePlan,
+  plural,
+  plannedTotal,
+  remainingLabels,
+} from './order-parse.js';
 import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
@@ -23,28 +29,8 @@ function short(t: string): string {
   return one.length > MAX_TEXT ? `${one.slice(0, MAX_TEXT)}…` : one;
 }
 
-// «1 закупка · 2 закупки · 5 закупок»
-function plural(n: number): string {
-  const last = n % 10;
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 14) return `${n} закупок`;
-  if (last === 1) return `${n} закупка`;
-  if (last >= 2 && last <= 4) return `${n} закупки`;
-  return `${n} закупок`;
-}
-
-// Сколько закупок нужно по заказу (из items.total; по умолчанию 1).
-function plannedTotal(items: unknown): number {
-  const t = (items as { total?: number } | null)?.total;
-  return typeof t === 'number' && t > 0 ? t : 1;
-}
-// Что ещё не куплено по заказу — для подсказки «осталось…».
-function remainingLabels(items: unknown, doneCount: number): string {
-  const list = (items as { list?: { label: string; amount: number }[] } | null)?.list;
-  if (!Array.isArray(list) || list.length === 0) return '';
-  const left = list.slice(doneCount);
-  return left.length ? left.map((i) => `${i.label} €${i.amount}`).join(' + ') : '';
-}
+// plural / plannedTotal / remainingLabels живут в order-parse.ts — там же, где
+// разбор состава, и без зависимости от БД (иначе их не покрыть тестами).
 
 // Контекст заказа для цепочки закупки: какая игра и какая позиция следующая.
 // Нужен, чтобы не переспрашивать то, что уже известно из состава заказа
