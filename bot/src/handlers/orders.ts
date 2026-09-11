@@ -46,6 +46,40 @@ function remainingLabels(items: unknown, doneCount: number): string {
   return left.length ? left.map((i) => `${i.label} €${i.amount}`).join(' + ') : '';
 }
 
+// Контекст заказа для цепочки закупки: какая игра и какая позиция следующая.
+// Нужен, чтобы не переспрашивать то, что уже известно из состава заказа
+// (категория всегда game_donate, игра одна на весь заказ).
+export async function orderContext(orderId: string): Promise<{
+  num: number;
+  game: 'Massive' | 'Furious' | null;
+  next: { label: string; amount: number } | null;
+  doneCount: number;
+  total: number;
+} | null> {
+  const rows = await db
+    .select({ num: orderQueue.num, items: orderQueue.items })
+    .from(orderQueue)
+    .where(eq(orderQueue.id, orderId))
+    .limit(1);
+  const o = rows[0];
+  if (!o) return null;
+
+  const cnt = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(purchases)
+    .where(and(eq(purchases.orderQueueId, orderId), eq(purchases.result, 'done')));
+  const doneCount = cnt[0]?.c ?? 0;
+
+  const list = (o.items as { list?: { label: string; amount: number; game?: string }[] } | null)?.list;
+  const next = Array.isArray(list) ? (list[doneCount] ?? null) : null;
+  // Игра одна на весь заказ — берём из первой позиции (состав может быть задан
+  // вручную числом, тогда list пуст и игру придётся спросить).
+  const first = Array.isArray(list) ? list[0] : undefined;
+  const game = (first?.game as 'Massive' | 'Furious' | undefined) ?? null;
+
+  return { num: o.num, game, next, doneCount, total: plannedTotal(o.items) };
+}
+
 // Итог по заказу после закупки.
 // Закрываем ТОЛЬКО когда сделаны ВСЕ позиции и покупка успешна.
 // При ⚠️/💀 счётчик не растёт: покупка была, но позиция не закрыта —

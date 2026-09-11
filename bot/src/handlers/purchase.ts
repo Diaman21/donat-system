@@ -7,7 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
-import { closeOrderIfDone, ORD_CB } from './orders.js';
+import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -86,8 +86,36 @@ export async function startPurchase(ctx: AppContext): Promise<void> {
   await ctx.reply('С какого телефона закупка?', { reply_markup: kb });
 }
 
-// Шаг 1: выбран телефон → выбор категории.
+// Шаг 1: выбран телефон.
+// ЕСЛИ идём по заказу — категорию и игру не спрашиваем: заказ по определению
+// донат в игре (game_donate), а игра одна на весь заказ и известна из состава.
+// Спрашиваем их только в закупке «🛒 Без заказа».
 export async function onPhoneSelected(ctx: AppContext, phoneId: string): Promise<void> {
+  const orderId = ctx.session.pendingOrderId;
+  if (orderId) {
+    const oc = await orderContext(orderId);
+    if (oc?.game) {
+      // Известны и категория, и игра → сразу к сумме.
+      ctx.session.flow = {
+        kind: 'purchase_amount',
+        phoneId,
+        categoryCode: 'game_donate',
+        game: oc.game,
+      };
+      await askAmount(ctx, oc.next);
+      return;
+    }
+    // Состав задавали вручную числом — игру не знаем, спросим её (но не категорию).
+    ctx.session.flow = { kind: 'purchase_game', phoneId, categoryCode: 'game_donate' };
+    const gk = new InlineKeyboard();
+    for (const g of GAMES) gk.text(g, `${CB.game}${g}`).row();
+    gk.text('✏️ Другая игра', `${CB.game}__custom`).row();
+    gk.text('❌ Отмена', CANCEL_CB);
+    await ctx.reply('В какой игре?', { reply_markup: gk });
+    return;
+  }
+
+  // Закупка без заказа — спрашиваем всё как раньше.
   ctx.session.flow = { kind: 'purchase_category', phoneId };
   const cats = await db
     .select({ code: purchaseCategories.code })
@@ -175,7 +203,12 @@ export async function onPurchaseGame(ctx: AppContext, text: string): Promise<voi
 
 // Показ выбора суммы. Для танков суммы зависят от ИГРЫ (цены разные),
 // для ВК — номиналы голосов из denominations категории.
-async function askAmount(ctx: AppContext): Promise<void> {
+// `expect` — ожидаемая позиция заказа (подсказка оператору). Сумму НЕ подставляем
+// автоматически: по факту могли купить не то, что в заказе, а данные важнее удобства.
+async function askAmount(
+  ctx: AppContext,
+  expect?: { label: string; amount: number } | null,
+): Promise<void> {
   const flow = ctx.session.flow;
   if (flow?.kind !== 'purchase_amount') return;
 
@@ -207,7 +240,9 @@ async function askAmount(ctx: AppContext): Promise<void> {
     }
   }
   kb.row().text('✏️ Другая сумма', `${CB.amount}custom`).row().text('❌ Отмена', CANCEL_CB);
-  await ctx.reply(isVk ? 'Сколько голосов купил?' : 'Сколько € потрачено?', { reply_markup: kb });
+  const ask = isVk ? 'Сколько голосов купил?' : 'Сколько € потрачено?';
+  const hint = expect ? `По заказу ожидается: ${expect.label} — €${expect.amount}\n\n` : '';
+  await ctx.reply(`${hint}${ask}`, { reply_markup: kb });
 }
 
 // Шаг 4a: выбрана быстрая сумма (или «Другая») кнопкой.
