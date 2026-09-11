@@ -6,6 +6,7 @@ import { phones, type PurchaseResultValue } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { HIST_CB } from './history.js';
+import { mskNow, mskTodayIso, addDaysIso, ddmmOf, hhmmMsk, isoOf } from '../format.js';
 
 // «📅 Отчёт» — проводник по датам с проваливанием:
 //   период → дни → день (телефоны) → телефон за день (таймлайн).
@@ -25,32 +26,11 @@ const MASK =
   '(год берётся текущий)';
 
 // ---------- даты (МСК) ----------
-const pad = (n: number) => String(n).padStart(2, '0');
-const isoOf = (y: number, m0: number, d: number) => `${y}-${pad(m0 + 1)}-${pad(d)}`;
-
-function mskNow() {
-  const t = new Date(Date.now() + 3 * 3600 * 1000);
-  return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() };
-}
-function todayIso() {
-  const { y, m, d } = mskNow();
-  return isoOf(y, m, d);
-}
-function addDays(iso: string, delta: number) {
-  const [y, m, d] = iso.split('-').map(Number);
-  const dt = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1));
-  dt.setUTCDate(dt.getUTCDate() + delta);
-  return isoOf(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
-}
-const ddmm = (iso: string) => {
-  const p = iso.split('-');
-  return `${p[2]}.${p[1]}`;
-};
-function hhmm(at: unknown) {
-  const x = new Date(at as string);
-  x.setUTCHours(x.getUTCHours() + 3);
-  return `${pad(x.getUTCHours())}:${pad(x.getUTCMinutes())}`;
-}
+// Сама арифметика живёт в ../format.js — она общая с stats.ts.
+const todayIso = mskTodayIso;
+const addDays = addDaysIso;
+const ddmm = ddmmOf;
+const hhmm = (at: unknown) => hhmmMsk(at as string);
 
 function presetRange(p: string): { from: string; to: string } | null {
   const today = todayIso();

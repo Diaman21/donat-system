@@ -5,6 +5,7 @@ import { phones, purchases, purchaseCategories, users } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
+import { mskTodayIso, daysBetweenIso, addDaysIso, ddmmOf } from '../format.js';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d
@@ -36,18 +37,13 @@ async function withdrawalAlerts(): Promise<string[]> {
     group by ph.id, ph.imei_last4, ph.label
   `)) as unknown as { imei: string; label: string | null; first_day: string }[];
 
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const t = new Date(Date.now() + 3 * 3600 * 1000); // МСК
-  const todayUTC = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  const today = mskTodayIso();
 
   const alerts: { line: string; days: number }[] = [];
   for (const r of rows) {
-    const [fy, fm, fd] = r.first_day.split('-').map(Number);
-    const firstUTC = Date.UTC(fy ?? 1970, (fm ?? 1) - 1, fd ?? 1);
-    const days = Math.floor((todayUTC - firstUTC) / 86400000);
+    const days = daysBetweenIso(r.first_day, today);
     if (days < WARN_FROM_DAY) continue;
-    const wd = new Date(firstUTC + WITHDRAW_DAYS * 86400000);
-    const wl = `${pad(wd.getUTCDate())}.${pad(wd.getUTCMonth() + 1)}`;
+    const wl = ddmmOf(addDaysIso(r.first_day, WITHDRAW_DAYS));
     const label = r.label ? ` «${r.label}»` : '';
     let line: string;
     if (days >= WITHDRAW_DAYS)
