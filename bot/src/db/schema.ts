@@ -25,14 +25,9 @@ import {
 // ---------- Enums ----------
 export const userRole = pgEnum('user_role', ['customer', 'operator', 'moderator']);
 export const phoneStatus = pgEnum('phone_status', ['active', 'dead', 'prepared']);
-export const orderStatus = pgEnum('order_status', [
-  'new',
-  'taken',
-  'in_progress',
-  'completed',
-  'cancelled',
-]);
 export const purchaseResult = pgEnum('purchase_result', ['done', 'support', 'long']);
+// order_status удалён вместе с таблицей orders (миграция 0011).
+// У order_queue.status тип обычный text — отдельный enum ему не нужен.
 
 // ---------- users ----------
 export const users = pgTable('users', {
@@ -76,27 +71,15 @@ export const phones = pgTable('phones', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ---------- orders ----------
-export const orders = pgTable('orders', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  customerId: uuid('customer_id').notNull(),
-  categoryId: uuid('category_id').notNull(),
-  gameAccount: text('game_account').notNull(),
-  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-  status: orderStatus('status').notNull().default('new'),
-  operatorId: uuid('operator_id'),
-  notes: text('notes'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  takenAt: timestamp('taken_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+// Таблица `orders` и колонка `purchases.order_id` УДАЛЕНЫ (миграция 0011).
+// Это было наследие первой модели — «доски заказов» с заказчиками, от которой
+// отказались. Список задач команды живёт в `order_queue` (0008), а связь
+// заказа с покупкой — в `purchases.order_queue_id` (0009).
 
 // ---------- purchases (ядро базы знаний) ----------
 export const purchases = pgTable('purchases', {
   id: uuid('id').primaryKey().defaultRandom(),
   phoneId: uuid('phone_id').notNull(),
-  orderId: uuid('order_id'), // nullable: разогревочные покупки без заказа
   operatorId: uuid('operator_id').notNull(),
   categoryId: uuid('category_id').notNull(),
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
@@ -122,8 +105,11 @@ export const botSessions = pgTable('bot_sessions', {
 });
 
 // ---------- order_queue — простой список заказов команды (миграция 0008) ----------
-// НЕ путать со старой `orders` (наследие «доски заказов», пустая).
-// С покупками сознательно НЕ связан — чтобы не мусорить данные коридора.
+// Внутренний список задач двух операторов, не доска заказчиков.
+// С покупками связан через purchases.order_queue_id (миграция 0009):
+// закупка знает, по какому заказу сделана. На аналитику коридора это не
+// влияет — колонка nullable и в её запросах не участвует.
+// Состав заказа (сколько закупок нужно) — в items (миграция 0010).
 export const orderQueue = pgTable('order_queue', {
   id: uuid('id').primaryKey().defaultRandom(),
   num: bigserial('num', { mode: 'number' }), // человеческий номер, генерирует БД
@@ -145,13 +131,10 @@ export type NewUser = typeof users.$inferInsert;
 export type PurchaseCategory = typeof purchaseCategories.$inferSelect;
 export type Phone = typeof phones.$inferSelect;
 export type NewPhone = typeof phones.$inferInsert;
-export type Order = typeof orders.$inferSelect;
-export type NewOrder = typeof orders.$inferInsert;
 export type Purchase = typeof purchases.$inferSelect;
 export type NewPurchase = typeof purchases.$inferInsert;
 export type OrderQueueItem = typeof orderQueue.$inferSelect;
 
 export type UserRole = (typeof userRole.enumValues)[number];
 export type PhoneStatus = (typeof phoneStatus.enumValues)[number];
-export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type PurchaseResultValue = (typeof purchaseResult.enumValues)[number];

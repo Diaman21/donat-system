@@ -13,7 +13,10 @@ import { db } from '../db/client.js';
 const TABLES = ['users', 'purchase_categories', 'phones', 'purchases', 'order_queue'] as const;
 
 // bot_sessions не бэкапим — это временное состояние ввода, ценности нет.
-// Старая `orders` не бэкапится — пустая, наследие модели «доска заказов».
+//
+// ⚠️ Дампы, снятые ДО 12.09.2026, содержат у purchases лишнюю колонку
+// order_id (наследие удалённой таблицы orders, миграция 0011). Во всех
+// строках там NULL — при восстановлении старого дампа её нужно отбросить.
 
 export interface FullBackup {
   json: string;
