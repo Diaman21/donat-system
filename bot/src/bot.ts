@@ -61,6 +61,7 @@ import {
   onOrderText,
   listOrders,
   onOrderExecute,
+  onOrderPlan,
   onOrderCancel,
   ORD_CB,
 } from './handlers/orders.js';
@@ -166,19 +167,31 @@ export function createBot(): Bot<AppContext> {
       }
       if (data.startsWith(KILL_CB)) return void (await onKillAsk(ctx, data.slice(KILL_CB.length)));
       if (data.startsWith(ORD_CB)) {
-        const rest = data.slice(ORD_CB.length); // add | done:<id> | cancel:<id>
+        // add | list | done:<id> | cancel:<id> | plan:<id>:<n>
+        const rest = data.slice(ORD_CB.length);
         if (rest === 'add') return void (await startAddOrder(ctx));
+        if (rest === 'list') return void (await listOrders(ctx));
         const sep = rest.indexOf(':');
         if (sep > 0) {
           const action = rest.slice(0, sep);
-          const id = rest.slice(sep + 1);
-          // «done» = выполнить: заказ запоминается в сессии и сразу запускается
-          // цепочка закупки; заказ закроется в её конце и только при ✅
+          const tail = rest.slice(sep + 1);
+          // «done» = выполнить: если состав заказа ещё не подтверждён, бот сначала
+          // покажет распознанное; иначе сразу запускает цепочку закупки
           if (action === 'done') {
-            if (await onOrderExecute(ctx, id)) await startPurchase(ctx);
+            if (await onOrderExecute(ctx, tail)) await startPurchase(ctx);
             return;
           }
-          if (action === 'cancel') return void (await onOrderCancel(ctx, id));
+          if (action === 'cancel') return void (await onOrderCancel(ctx, tail));
+          // plan:<id>:<n> — подтверждение состава (n=0 принять распознанное)
+          if (action === 'plan') {
+            const cut = tail.lastIndexOf(':');
+            if (cut > 0) {
+              const id = tail.slice(0, cut);
+              const n = Number(tail.slice(cut + 1));
+              if (Number.isFinite(n) && (await onOrderPlan(ctx, id, n))) await startPurchase(ctx);
+            }
+            return;
+          }
         }
         return;
       }

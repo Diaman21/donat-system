@@ -1,7 +1,8 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { orderQueue, users } from '../db/schema.js';
+import { orderQueue, purchases, users } from '../db/schema.js';
+import { parseOrder, describePlan } from './order-parse.js';
 import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
@@ -22,10 +23,23 @@ function short(t: string): string {
   return one.length > MAX_TEXT ? `${one.slice(0, MAX_TEXT)}…` : one;
 }
 
-// Закрыть заказ после закупки — ТОЛЬКО если покупка прошла успешно.
-// При ⚠️ (саппорт) и 💀 (смерть телефона) заказ остаётся открытым: покупка была,
-// но заказ не выполнен — саппорт повторяем завтра, смерть доделываем на другом телефоне.
-// Возвращает строку для итогового сообщения.
+// Сколько закупок нужно по заказу (из items.total; по умолчанию 1).
+function plannedTotal(items: unknown): number {
+  const t = (items as { total?: number } | null)?.total;
+  return typeof t === 'number' && t > 0 ? t : 1;
+}
+// Что ещё не куплено по заказу — для подсказки «осталось…».
+function remainingLabels(items: unknown, doneCount: number): string {
+  const list = (items as { list?: { label: string; amount: number }[] } | null)?.list;
+  if (!Array.isArray(list) || list.length === 0) return '';
+  const left = list.slice(doneCount);
+  return left.length ? left.map((i) => `${i.label} €${i.amount}`).join(' + ') : '';
+}
+
+// Итог по заказу после закупки.
+// Закрываем ТОЛЬКО когда сделаны ВСЕ позиции и покупка успешна.
+// При ⚠️/💀 счётчик не растёт: покупка была, но позиция не закрыта —
+// саппорт повторяем завтра, смерть доделываем на другом телефоне.
 export async function closeOrderIfDone(
   ctx: AppContext,
   orderId: string,
@@ -33,7 +47,7 @@ export async function closeOrderIfDone(
 ): Promise<string> {
   const user = ctx.dbUser;
   const rows = await db
-    .select({ num: orderQueue.num, status: orderQueue.status })
+    .select({ num: orderQueue.num, status: orderQueue.status, items: orderQueue.items })
     .from(orderQueue)
     .where(eq(orderQueue.id, orderId))
     .limit(1);
@@ -47,12 +61,29 @@ export async function closeOrderIfDone(
     return `📌 Заказ #${o.num} уже был закрыт ранее.`;
   }
 
+  // Считаем успешные закупки, привязанные к этому заказу (текущая уже записана).
+  const cnt = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(purchases)
+    .where(and(eq(purchases.orderQueueId, orderId), eq(purchases.result, 'done')));
+  const doneCount = cnt[0]?.c ?? 0;
+  const total = plannedTotal(o.items);
+
+  if (doneCount < total) {
+    const left = remainingLabels(o.items, doneCount);
+    return [
+      `📌 Заказ #${o.num}: закупка ${doneCount} из ${total} ✅`,
+      left ? `   Осталось: ${left}` : `   Осталось закупок: ${total - doneCount}`,
+      '   Заказ остаётся открытым — жми «✅ Выполнить» снова.',
+    ].join('\n');
+  }
+
   await db
     .update(orderQueue)
     .set({ status: 'done', doneBy: user?.id ?? null, doneAt: new Date() })
     .where(and(eq(orderQueue.id, orderId), eq(orderQueue.status, 'open')));
   const open = await countOpen();
-  return `✅ Заказ #${o.num} выполнен и закрыт. Открытых осталось: ${open}.`;
+  return `✅ Заказ #${o.num} выполнен ПОЛНОСТЬЮ (${total} из ${total}) и закрыт.\nОткрытых осталось: ${open}.`;
 }
 
 // Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
@@ -149,6 +180,11 @@ export async function listOrders(ctx: AppContext): Promise<void> {
       text: orderQueue.text,
       createdAt: orderQueue.createdAt,
       author: users.username,
+      items: orderQueue.items,
+      // сколько закупок по заказу уже успешно сделано
+      doneCount: sql<number>`(select count(*)::int from ${purchases}
+        where ${purchases.orderQueueId} = ${orderQueue.id}
+          and ${purchases.result} = 'done')`,
     })
     .from(orderQueue)
     .leftJoin(users, eq(users.id, orderQueue.createdBy))
@@ -190,7 +226,10 @@ export async function listOrders(ctx: AppContext): Promise<void> {
   const lines: string[] = [];
 
   for (const o of shown) {
-    lines.push(`#${o.num} · @${o.author ?? '—'}, ${fmtMsk(o.createdAt)}`);
+    // Прогресс показываем только когда состав уже подтверждён и он многошаговый
+    const total = o.items ? plannedTotal(o.items) : 0;
+    const prog = total > 1 ? `  ·  ${o.doneCount} из ${total} ✅` : '';
+    lines.push(`#${o.num} · @${o.author ?? '—'}, ${fmtMsk(o.createdAt)}${prog}`);
     lines.push(short(o.text));
     lines.push('');
     if (allowEdit) {
@@ -222,7 +261,12 @@ export async function onOrderExecute(ctx: AppContext, id: string): Promise<boole
   if (!(await requireOperator(ctx))) return false;
 
   const rows = await db
-    .select({ num: orderQueue.num, text: orderQueue.text, status: orderQueue.status })
+    .select({
+      num: orderQueue.num,
+      text: orderQueue.text,
+      status: orderQueue.status,
+      items: orderQueue.items,
+    })
     .from(orderQueue)
     .where(eq(orderQueue.id, id))
     .limit(1);
@@ -238,8 +282,82 @@ export async function onOrderExecute(ctx: AppContext, id: string): Promise<boole
     return false;
   }
 
+  // Состав ещё не подтверждён — показываем распознанное и ждём подтверждения.
+  // Слепо доверять парсеру нельзя: ошибка либо закроет заказ рано, либо подвесит.
+  if (!o.items) {
+    const plan = parseOrder(o.text);
+    const kb = new InlineKeyboard();
+    if (plan.total > 0) kb.text(`✅ Верно, ${plan.total} — начать`, `${ORD_CB}plan:${id}:0`).row();
+    for (const n of [1, 2, 3, 4]) kb.text(`${n}`, `${ORD_CB}plan:${id}:${n}`);
+    kb.row().text('⬅️ Назад к заказам', `${ORD_CB}list`);
+    await ctx.reply(
+      [
+        `▶️ Заказ #${o.num}`,
+        short(o.text),
+        '',
+        ...describePlan(plan),
+        '',
+        plan.total > 0
+          ? 'Если распознал верно — жми «✅ Верно». Иначе выбери число закупок.'
+          : 'Выбери, сколько закупок нужно по этому заказу.',
+      ].join('\n'),
+      { reply_markup: kb },
+    );
+    return false; // закупку пока не начинаем
+  }
+
+  // Состав уже известен — показываем прогресс и идём к закупке.
+  const cnt = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(purchases)
+    .where(and(eq(purchases.orderQueueId, id), eq(purchases.result, 'done')));
+  const doneCount = cnt[0]?.c ?? 0;
+  const total = plannedTotal(o.items);
+  const left = remainingLabels(o.items, doneCount);
+
   ctx.session.pendingOrderId = id;
-  await ctx.reply(`▶️ Выполняем заказ #${o.num}:\n${short(o.text)}\n\nТеперь записываем закупку.`);
+  await ctx.reply(
+    [
+      `▶️ Заказ #${o.num} — закупка ${doneCount + 1} из ${total}`,
+      short(o.text),
+      left ? `\nСейчас покупаем: ${left.split(' + ')[0]}` : '',
+      '\nЗаписываем закупку.',
+    ].join('\n'),
+  );
+  return true;
+}
+
+// Подтверждение состава заказа: n=0 — принять распознанное, n>0 — задать вручную.
+// Возвращает true, если можно запускать закупку.
+export async function onOrderPlan(ctx: AppContext, id: string, n: number): Promise<boolean> {
+  if (!(await requirePrivate(ctx))) return false;
+  if (!(await requireOperator(ctx))) return false;
+
+  const rows = await db
+    .select({ num: orderQueue.num, text: orderQueue.text, status: orderQueue.status })
+    .from(orderQueue)
+    .where(eq(orderQueue.id, id))
+    .limit(1);
+  const o = rows[0];
+  if (!o || o.status !== 'open') {
+    await ctx.reply('Заказ не найден или уже закрыт.');
+    await listOrders(ctx);
+    return false;
+  }
+
+  const plan = parseOrder(o.text);
+  const total = n > 0 ? n : plan.total;
+  if (total < 1) {
+    await ctx.reply('Не понял количество. Выбери числом.');
+    return false;
+  }
+  // Если оператор задал число вручную и оно не совпало с разбором — разбивку
+  // не сохраняем, чтобы не показывать неверные подсказки «осталось…».
+  const items = { total, list: n > 0 && n !== plan.total ? [] : plan.list };
+
+  await db.update(orderQueue).set({ items }).where(eq(orderQueue.id, id));
+  ctx.session.pendingOrderId = id;
+  await ctx.reply(`✅ Заказ #${o.num}: ${total} ${total === 1 ? 'закупка' : 'закупки'}. Начинаем первую.`);
   return true;
 }
 

@@ -133,6 +133,9 @@ export const orderQueue = pgTable('order_queue', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   doneBy: uuid('done_by'),
   doneAt: timestamp('done_at', { withTimezone: true }),
+  // Состав заказа (миграция 0010): { total: N, list: [{label, amount}] }.
+  // NULL — состав ещё не подтверждён оператором.
+  items: jsonb('items'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
