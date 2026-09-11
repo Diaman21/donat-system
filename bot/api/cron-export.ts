@@ -3,6 +3,7 @@ import { env } from '../src/config.js';
 import { buildPurchasesCsv } from '../src/handlers/export.js';
 import { buildFullBackup } from '../src/handlers/backup.js';
 import { notifyModerator } from '../src/notify.js';
+import { mskTodayIso } from '../src/format.js';
 
 // Vercel Cron: ЕЖЕДНЕВНЫЙ бэкап базы знаний в группу.
 //
@@ -30,7 +31,7 @@ export default async function handler(req: any, res: any): Promise<void> {
 
   const bot = new Bot(env.botToken);
   try {
-    const stamp = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const stamp = mskTodayIso(); // дата в имени файла — по МСК
 
     // 1) Полный дамп — главное
     const full = await buildFullBackup();

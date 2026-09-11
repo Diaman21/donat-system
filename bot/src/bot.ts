@@ -75,12 +75,15 @@ import {
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
-export function createBot(): Bot<AppContext> {
-  if (!env.botToken) {
+// token можно передать явно — этим пользуется локальный запуск (src/index.ts),
+// чтобы поднять ОТДЕЛЬНОГО тестового бота и не снять webhook у боевого.
+// На Vercel аргумент не передаётся, берётся боевой TELEGRAM_BOT_TOKEN.
+export function createBot(token: string = env.botToken): Bot<AppContext> {
+  if (!token) {
     throw new Error('Не задан TELEGRAM_BOT_TOKEN в .env — получи токен у @BotFather.');
   }
 
-  const bot = new Bot<AppContext>(env.botToken);
+  const bot = new Bot<AppContext>(token);
 
   bot.use(
     session({

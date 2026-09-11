@@ -15,11 +15,27 @@ function required(name: string): string {
   return value;
 }
 
+// Токен для локального запуска.
+//
+// Боевой бот живёт на Vercel через webhook. Если запустить того же бота
+// локально в long polling, Telegram снимет webhook — прод молча умрёт,
+// и заметишь ты это в лучшем случае через несколько часов.
+//
+// Поэтому для локального запуска заводится ОТДЕЛЬНЫЙ бот у @BotFather,
+// его токен кладётся в TELEGRAM_BOT_TOKEN_DEV. Тогда `npm run dev` трогает
+// только тестового бота, а боевой продолжает работать.
+//
+// Если TELEGRAM_BOT_TOKEN_DEV не задан — src/index.ts остановится с
+// объяснением, вместо того чтобы по-тихому увести прод (см. localBotToken).
+const devToken = process.env.TELEGRAM_BOT_TOKEN_DEV ?? '';
+
 export const env = {
   /** Connection string Neon (pooler). Нужен всегда. */
   databaseUrl: required('DATABASE_URL'),
-  /** Токен бота от @BotFather. Нужен только для запуска бота, не для db:check. */
+  /** Токен боевого бота от @BotFather. На Vercel — единственный используемый. */
   botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+  /** Токен отдельного бота для локальной разработки (может быть пустым). */
+  devBotToken: devToken,
   /** ID чата модератора для системных уведомлений (опционально). */
   moderatorChatId: process.env.TELEGRAM_MODERATOR_CHAT_ID ?? '',
   /** ID группы для статистики (опционально, заполним после получения ID). */
