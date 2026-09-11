@@ -23,6 +23,16 @@ function short(t: string): string {
   return one.length > MAX_TEXT ? `${one.slice(0, MAX_TEXT)}…` : one;
 }
 
+// «1 закупка · 2 закупки · 5 закупок»
+function plural(n: number): string {
+  const last = n % 10;
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 14) return `${n} закупок`;
+  if (last === 1) return `${n} закупка`;
+  if (last >= 2 && last <= 4) return `${n} закупки`;
+  return `${n} закупок`;
+}
+
 // Сколько закупок нужно по заказу (из items.total; по умолчанию 1).
 function plannedTotal(items: unknown): number {
   const t = (items as { total?: number } | null)?.total;
@@ -287,9 +297,17 @@ export async function onOrderExecute(ctx: AppContext, id: string): Promise<boole
   if (!o.items) {
     const plan = parseOrder(o.text);
     const kb = new InlineKeyboard();
-    if (plan.total > 0) kb.text(`✅ Верно, ${plan.total} — начать`, `${ORD_CB}plan:${id}:0`).row();
-    for (const n of [1, 2, 3, 4]) kb.text(`${n}`, `${ORD_CB}plan:${id}:${n}`);
-    kb.row().text('⬅️ Назад к заказам', `${ORD_CB}list`);
+    if (plan.total > 0) {
+      // Два основных действия. Ручной ввод спрятан за отдельный шаг: голые цифры
+      // рядом с «✅ Верно, 2» путали (оператор не понимал, что они значат).
+      kb.text(`✅ Верно, ${plural(plan.total)} — начать`, `${ORD_CB}plan:${id}:0`).row();
+      kb.text('✏️ Не угадал, укажу сам', `${ORD_CB}ask:${id}`).row();
+    } else {
+      // Распознать не удалось — подтверждать нечего, сразу спрашиваем число.
+      for (const n of [1, 2, 3, 4, 5]) kb.text(`${n}`, `${ORD_CB}plan:${id}:${n}`);
+      kb.row();
+    }
+    kb.text('⬅️ Назад к заказам', `${ORD_CB}list`);
     await ctx.reply(
       [
         `▶️ Заказ #${o.num}`,
@@ -298,8 +316,8 @@ export async function onOrderExecute(ctx: AppContext, id: string): Promise<boole
         ...describePlan(plan),
         '',
         plan.total > 0
-          ? 'Если распознал верно — жми «✅ Верно». Иначе выбери число закупок.'
-          : 'Выбери, сколько закупок нужно по этому заказу.',
+          ? 'Всё верно? Тогда начинаем первую закупку.'
+          : 'Сколько закупок нужно по этому заказу?',
       ].join('\n'),
       { reply_markup: kb },
     );
@@ -325,6 +343,32 @@ export async function onOrderExecute(ctx: AppContext, id: string): Promise<boole
     ].join('\n'),
   );
   return true;
+}
+
+// «✏️ Не угадал» — отдельный экран с цифрами. Отдельный, потому что под вопросом
+// «Сколько закупок?» цифры однозначны, а рядом с «✅ Верно, 2» — нет.
+export async function onOrderAsk(ctx: AppContext, id: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+
+  const rows = await db
+    .select({ num: orderQueue.num, text: orderQueue.text, status: orderQueue.status })
+    .from(orderQueue)
+    .where(eq(orderQueue.id, id))
+    .limit(1);
+  const o = rows[0];
+  if (!o || o.status !== 'open') {
+    await ctx.reply('Заказ не найден или уже закрыт.');
+    return void (await listOrders(ctx));
+  }
+
+  const kb = new InlineKeyboard();
+  for (const n of [1, 2, 3, 4, 5]) kb.text(`${n}`, `${ORD_CB}plan:${id}:${n}`);
+  kb.row().text('⬅️ Назад к заказам', `${ORD_CB}list`);
+  await ctx.reply(
+    [`Сколько закупок в заказе #${o.num}?`, '', short(o.text)].join('\n'),
+    { reply_markup: kb },
+  );
 }
 
 // Подтверждение состава заказа: n=0 — принять распознанное, n>0 — задать вручную.
@@ -357,7 +401,7 @@ export async function onOrderPlan(ctx: AppContext, id: string, n: number): Promi
 
   await db.update(orderQueue).set({ items }).where(eq(orderQueue.id, id));
   ctx.session.pendingOrderId = id;
-  await ctx.reply(`✅ Заказ #${o.num}: ${total} ${total === 1 ? 'закупка' : 'закупки'}. Начинаем первую.`);
+  await ctx.reply(`✅ Заказ #${o.num}: ${plural(total)}. Начинаем первую.`);
   return true;
 }
 

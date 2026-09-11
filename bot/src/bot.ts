@@ -61,6 +61,7 @@ import {
   onOrderText,
   listOrders,
   onOrderExecute,
+  onOrderAsk,
   onOrderPlan,
   onOrderCancel,
   ORD_CB,
@@ -182,6 +183,8 @@ export function createBot(): Bot<AppContext> {
             return;
           }
           if (action === 'cancel') return void (await onOrderCancel(ctx, tail));
+          // ask:<id> — «✏️ Не угадал»: отдельный экран с выбором числа закупок
+          if (action === 'ask') return void (await onOrderAsk(ctx, tail));
           // plan:<id>:<n> — подтверждение состава (n=0 принять распознанное)
           if (action === 'plan') {
             const cut = tail.lastIndexOf(':');
