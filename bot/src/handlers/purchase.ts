@@ -7,7 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
-import { closeOrderIfDone } from './orders.js';
+import { closeOrderIfDone, ORD_CB } from './orders.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -601,11 +601,21 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     note ? `📝 ${note}` : null,
   ].filter(Boolean);
 
-  // Заказ закрываем ТОЛЬКО при ✅. При ⚠️/💀 покупка была, но заказ не выполнен:
-  // саппорт — повторить завтра, смерть — доделать на другом телефоне.
+  // Заказ закрываем ТОЛЬКО когда сделаны все позиции и покупка успешна.
+  // При ⚠️/💀 покупка была, но позиция не закрыта: саппорт — повторить завтра,
+  // смерть — доделать на другом телефоне.
+  let continueKb: InlineKeyboard | undefined;
   if (orderId) {
-    const closed = await closeOrderIfDone(ctx, orderId, result);
-    parts.push('', closed);
+    const r = await closeOrderIfDone(ctx, orderId, result);
+    parts.push('', r.text);
+    // Если заказ не доделан — даём продолжить прямо отсюда, не гоняя оператора
+    // обратно в список заказов.
+    if (r.stillOpen) {
+      continueKb = new InlineKeyboard()
+        .text(`✅ Продолжить заказ #${r.num}`, `${ORD_CB}done:${orderId}`)
+        .row()
+        .text('📥 К списку заказов', `${ORD_CB}list`);
+    }
   }
 
   // При 💀 — телефон умер (триггер). Показываем «надгробие».
@@ -614,5 +624,8 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     if (pm) parts.push('', pm);
   }
 
-  await ctx.reply(parts.join('\n'), { reply_markup: mainMenu() });
+  // Инлайн-кнопку и reply-меню одновременно Telegram не отдаёт, поэтому при
+  // незакрытом заказе шлём кнопку продолжения — нижнее меню persistent и никуда
+  // не девается.
+  await ctx.reply(parts.join('\n'), { reply_markup: continueKb ?? mainMenu() });
 }

@@ -54,7 +54,7 @@ export async function closeOrderIfDone(
   ctx: AppContext,
   orderId: string,
   result: 'done' | 'support' | 'long',
-): Promise<string> {
+): Promise<{ text: string; stillOpen: boolean; num: number | null }> {
   const user = ctx.dbUser;
   const rows = await db
     .select({ num: orderQueue.num, status: orderQueue.status, items: orderQueue.items })
@@ -62,13 +62,19 @@ export async function closeOrderIfDone(
     .where(eq(orderQueue.id, orderId))
     .limit(1);
   const o = rows[0];
-  if (!o) return '⚠️ Заказ не найден — покупка записана без привязки.';
+  if (!o) {
+    return { text: '⚠️ Заказ не найден — покупка записана без привязки.', stillOpen: false, num: null };
+  }
 
   if (result !== 'done') {
-    return `📌 Заказ #${o.num} ОСТАЛСЯ ОТКРЫТЫМ (покупка не прошла) — доделать позже.`;
+    return {
+      text: `📌 Заказ #${o.num} ОСТАЛСЯ ОТКРЫТЫМ (покупка не прошла) — доделать позже.`,
+      stillOpen: true,
+      num: o.num,
+    };
   }
   if (o.status !== 'open') {
-    return `📌 Заказ #${o.num} уже был закрыт ранее.`;
+    return { text: `📌 Заказ #${o.num} уже был закрыт ранее.`, stillOpen: false, num: o.num };
   }
 
   // Считаем успешные закупки, привязанные к этому заказу (текущая уже записана).
@@ -81,11 +87,14 @@ export async function closeOrderIfDone(
 
   if (doneCount < total) {
     const left = remainingLabels(o.items, doneCount);
-    return [
-      `📌 Заказ #${o.num}: закупка ${doneCount} из ${total} ✅`,
-      left ? `   Осталось: ${left}` : `   Осталось закупок: ${total - doneCount}`,
-      '   Заказ остаётся открытым — жми «✅ Выполнить» снова.',
-    ].join('\n');
+    return {
+      text: [
+        `📌 Заказ #${o.num}: закупка ${doneCount} из ${total} ✅`,
+        left ? `   Осталось: ${left}` : `   Осталось закупок: ${total - doneCount}`,
+      ].join('\n'),
+      stillOpen: true,
+      num: o.num,
+    };
   }
 
   await db
@@ -93,7 +102,11 @@ export async function closeOrderIfDone(
     .set({ status: 'done', doneBy: user?.id ?? null, doneAt: new Date() })
     .where(and(eq(orderQueue.id, orderId), eq(orderQueue.status, 'open')));
   const open = await countOpen();
-  return `✅ Заказ #${o.num} выполнен ПОЛНОСТЬЮ (${total} из ${total}) и закрыт.\nОткрытых осталось: ${open}.`;
+  return {
+    text: `✅ Заказ #${o.num} выполнен ПОЛНОСТЬЮ (${total} из ${total}) и закрыт.\nОткрытых осталось: ${open}.`,
+    stillOpen: false,
+    num: o.num,
+  };
 }
 
 // Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
