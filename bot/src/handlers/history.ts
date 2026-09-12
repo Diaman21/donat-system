@@ -5,6 +5,7 @@ import { phones, purchases, purchaseCategories, type PurchaseResultValue } from 
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { fmtMsk } from '../format.js';
+import { PHONE_MARK, PHONE_STATE } from './menus.js';
 
 export const HIST_CB = 'hist:'; // + phoneId
 
@@ -32,7 +33,7 @@ export async function showPhoneList(ctx: AppContext): Promise<void> {
 
   const kb = new InlineKeyboard();
   for (const p of all) {
-    const mark = p.status === 'active' ? '📱' : '🪦';
+    const mark = PHONE_MARK[p.status];
     const label = p.label ? ` (${p.label})` : '';
     kb.text(`${mark} …${p.imei}${label}`, `${HIST_CB}${p.id}`).row();
   }
@@ -67,8 +68,7 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
     .orderBy(asc(purchases.purchasedAt));
 
   const total = items.reduce((a, p) => a + Number(p.amount), 0);
-  const statusLabel =
-    ph.status === 'active' ? 'активен' : ph.status === 'prepared' ? 'подготовлен' : 'умер';
+  const statusLabel = PHONE_STATE[ph.status];
   const label = ph.label ? ` «${ph.label}»` : '';
 
   // Разбивка по типу (танки / ВК) — методики разные

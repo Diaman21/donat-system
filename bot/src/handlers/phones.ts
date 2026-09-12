@@ -3,7 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases } from '../db/schema.js';
 import type { AppContext } from '../context.js';
-import { mainMenu } from './menus.js';
+import { mainMenu, PHONE_MARK, PHONE_STATE } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
@@ -63,16 +63,16 @@ export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<vo
   const kb = new InlineKeyboard();
   const lines = [`🔍 …${imei} — найдено: ${found.length}`, ''];
   for (const p of found) {
-    const mark = p.status === 'active' ? '📱' : p.status === 'prepared' ? '🧰' : '🪦';
+    const mark = PHONE_MARK[p.status];
     const label = p.label ? `«${p.label}»` : '(без метки)';
+    // У мёртвого дописываем причину и дату, остальные статусы берём из общей
+    // таблицы — так добавление нового статуса не провалится молча в «умер».
     const state =
-      p.status === 'active'
-        ? 'в работе'
-        : p.status === 'prepared'
-          ? 'подготовлен'
-          : p.deathReason === 'error'
-            ? `умер ${fmtMskDate(p.diedAt!)} (ошибка Apple)`
-            : `выведен ${p.diedAt ? fmtMskDate(p.diedAt) : '—'} (вручную)`;
+      p.status === 'dead'
+        ? p.deathReason === 'error'
+          ? `умер ${fmtMskDate(p.diedAt!)} (ошибка Apple)`
+          : `выведен ${p.diedAt ? fmtMskDate(p.diedAt) : '—'} (вручную)`
+        : PHONE_STATE[p.status];
     lines.push(`${mark} ${label} — ${state}`);
     lines.push(
       `   с ${fmtMskDate(p.connectedAt)} · ${p.cnt} покупок на €${Number(p.total).toFixed(2)}`,
