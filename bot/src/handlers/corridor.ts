@@ -103,11 +103,16 @@ export async function phonesNowLines(): Promise<string[]> {
       : null;
     const dayTxt = day ? `день ${day}/14 · ` : 'ещё не начат · ';
     const freeTxt = free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
+    // Три состояния, чтобы не писать «€205 из €120» и не повторять «лимит» дважды.
+    const budget =
+      spent >= DANGER_EUR
+        ? `€${spent} — лимит €${DANGER_EUR} превышен`
+        : n > 0
+          ? `€${spent} из €${DANGER_EUR} · ещё ${n}×€30`
+          : `€${spent} из €${DANGER_EUR} · лимит выбран`;
     out.push(
       `   …${p.imei}${p.label ? ` «${p.label}»` : ''}\n` +
-        `      ${dayTxt}€${spent} из €${DANGER_EUR} · ` +
-        (n > 0 ? `ещё ${n}×€30` : 'лимит выбран') +
-        ` · ${freeTxt}`,
+        `      ${dayTxt}${budget} · ${freeTxt}`,
     );
   }
   return out;

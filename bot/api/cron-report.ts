@@ -2,6 +2,7 @@ import { Bot } from 'grammy';
 import { env } from '../src/config.js';
 import { renderStats } from '../src/handlers/stats.js';
 import { phonesNowLines, violationsLines } from '../src/handlers/corridor.js';
+import { weeklyLines } from '../src/handlers/weekly.js';
 import { notifyModerator } from '../src/notify.js';
 
 // Vercel Cron: ежедневная сводка в группу.
@@ -34,6 +35,8 @@ export default async function handler(req: any, res: any): Promise<void> {
     // (отпуск, один оператор): сводка становится единственным контролем.
     const violations = await violationsLines(24);
     const phonesNow = await phonesNowLines();
+    // По понедельникам — итог прошедшей недели. В остальные дни пусто.
+    const weekly = await weeklyLines();
     const { text } = await renderStats('24h');
 
     const parts = [
@@ -41,6 +44,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       ...(violations.length ? ['', ...violations] : []),
       '',
       ...phonesNow,
+      ...(weekly.length ? ['', ...weekly] : []),
       '',
       text,
     ];
