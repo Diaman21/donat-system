@@ -64,6 +64,15 @@ export function mskTodayIso(): string {
   return mskIsoOfDate(new Date());
 }
 
+/**
+ * Понедельник ли указанный момент ПО МОСКВЕ.
+ * Ловушка: 21:30 UTC воскресенья — это уже 00:30 МСК понедельника.
+ */
+export function isMondayMsk(at: Date = new Date()): boolean {
+  const msk = new Date(new Date(at).getTime() + MSK_OFFSET_MS);
+  return msk.getUTCDay() === 1; // 0 = воскресенье, 1 = понедельник
+}
+
 /** Сдвиг даты на delta суток: addDaysIso('2026-09-12', -1) → '2026-09-11'. */
 export function addDaysIso(iso: string, delta: number): string {
   const dt = new Date(isoToUtcMs(iso));

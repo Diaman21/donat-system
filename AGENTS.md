@@ -418,8 +418,14 @@
   `order-parse`, `format` и `interval`: разбор состава заказа, календарь МСК и окно
   следующей закупки. Модули под тестом намеренно не ходят в БД, поэтому CI обходится
   без секретов. Интерфейс бота тестами не покрываем — дорого и малополезно.
-  > Правило, которое себя оправдало: если логику стоит покрыть тестом — вынеси её
-  > в модуль без импорта `db/client.js`. Так появились `order-parse.ts` и `interval.ts`.
+  > **Правило: если логику стоит покрыть тестом — вынеси её в модуль без импорта
+  > `db/client.js`.** Так появились `order-parse.ts` и `interval.ts`.
+  > ⚠️ **Нарушение этого правила НЕ видно локально.** `config.ts` падает без
+  > `DATABASE_URL`, но у разработчика `.env` есть — тест проходит, а в CI (где
+  > секретов нет и быть не должно) падает. Ровно так и вышло 12.09.2026 с
+  > `weekly.test.ts`. Функция уехала в `format.ts`, а на страже теперь
+  > **`test-hygiene.test.ts`**: он обходит граф импортов всех тестов и падает
+  > локально, если какой-то дотянулся до `db/client.ts` или `config.ts`.
 
 ## 6. Структура репозитория
 
@@ -442,10 +448,11 @@ donat-system/
         ├── context.ts      FlowState — состояния пошагового ввода
         ├── commands.ts     список команд для меню Telegram
         ├── format.ts       время и календарь МСК (единственное место)
-        ├── format.test.ts  тесты календаря
+        ├── format.test.ts  тесты календаря (+ понедельник по МСК)
+        ├── test-hygiene.test.ts  страж: тесты не тянут БД
         ├── db/             client · schema (зеркало SQL) · session-store · утилиты
         └── handlers/       purchase · phones · orders · order-parse (+ .test) ·
-                            interval (+ .test) · corridor · weekly (+ .test) ·
+                            interval (+ .test) · corridor · weekly ·
                             stats · vk · report ·
                             history · recent · postmortem · export · backup · menus
 ```

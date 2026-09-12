@@ -12,6 +12,7 @@ import {
   hhmmMsk,
   fmtMsk,
   fmtMskDate,
+  isMondayMsk,
 } from './format.js';
 
 // Тесты на календарь МСК.
@@ -150,4 +151,39 @@ test('fmtMsk и hhmmMsk дают одно и то же время', () => {
     const viaIntl = fmtMsk(new Date(iso)).split(' ')[1];
     assert.equal(hhmmMsk(iso), viaIntl, `расхождение на ${iso}`);
   }
+});
+
+// ---------- понедельник по МСК (для недельного итога) ----------
+//
+// Ловушка та же, что с «сегодня/завтра»: поздний вечер воскресенья по UTC —
+// это уже понедельник по Москве. Ошибка тихая: недельный блок просто выйдет
+// не в тот день, и заметить это можно только через неделю.
+
+test('isMondayMsk: понедельник в течение дня', () => {
+  // 07.09.2026 — понедельник
+  assert.equal(isMondayMsk(new Date('2026-09-07T06:00:00.000Z')), true); // 09:00 МСК
+  assert.equal(isMondayMsk(new Date('2026-09-07T09:00:00.000Z')), true); // 12:00 МСК — время сводки
+  assert.equal(isMondayMsk(new Date('2026-09-07T18:00:00.000Z')), true); // 21:00 МСК
+});
+
+test('isMondayMsk: остальные дни — нет', () => {
+  assert.equal(isMondayMsk(new Date('2026-09-08T09:00:00.000Z')), false); // вт
+  assert.equal(isMondayMsk(new Date('2026-09-12T09:00:00.000Z')), false); // сб
+  assert.equal(isMondayMsk(new Date('2026-09-13T09:00:00.000Z')), false); // вс
+});
+
+test('isMondayMsk: поздний вечер воскресенья по UTC — уже понедельник по МСК', () => {
+  assert.equal(isMondayMsk(new Date('2026-09-06T21:30:00.000Z')), true, '00:30 МСК пн');
+  assert.equal(isMondayMsk(new Date('2026-09-06T20:30:00.000Z')), false, '23:30 МСК вс');
+});
+
+test('isMondayMsk: граница понедельник → вторник по МСК', () => {
+  assert.equal(isMondayMsk(new Date('2026-09-07T20:59:00.000Z')), true, '23:59 МСК пн');
+  assert.equal(isMondayMsk(new Date('2026-09-07T21:00:00.000Z')), false, '00:00 МСК вт');
+});
+
+test('isMondayMsk: ровно один понедельник на 7 дней подряд', () => {
+  let n = 0;
+  for (let i = 0; i < 7; i++) if (isMondayMsk(new Date(Date.UTC(2026, 8, 7 + i, 9)))) n++;
+  assert.equal(n, 1);
 });

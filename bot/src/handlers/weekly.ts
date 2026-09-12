@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { mskIsoOfDate, addDaysIso, ddmmOf } from '../format.js';
+import { mskIsoOfDate, addDaysIso, ddmmOf, isMondayMsk } from '../format.js';
 
 // Недельный итог — добавляется в ежедневную сводку ПО ПОНЕДЕЛЬНИКАМ.
 //
@@ -22,11 +22,9 @@ import { mskIsoOfDate, addDaysIso, ddmmOf } from '../format.js';
 // ⚠️ Деньги считаем только по ✅: ⚠️ support (платёж отклонён) и 💀 long
 // (waiver вместо списания) денег не тратят.
 
-/** Понедельник ли сегодня по Москве. */
-export function isMondayMsk(at: Date = new Date()): boolean {
-  const msk = new Date(at.getTime() + 3 * 3600 * 1000);
-  return msk.getUTCDay() === 1; // 0 = воскресенье, 1 = понедельник
-}
+// isMondayMsk живёт в format.ts — вместе с остальным календарём МСК и, главное,
+// БЕЗ импорта БД: только так его можно покрыть тестом. Этот модуль ходит в базу,
+// поэтому его самого в тестах не поднять (CI падал именно на этом, 12.09.2026).
 
 interface WeekRow {
   eur: number;
