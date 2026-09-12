@@ -166,7 +166,32 @@ export async function violationsLines(hours = 24): Promise<string[]> {
         `через ${Number(r.gap).toFixed(1)} ч`,
     );
   }
-  out.push(`   (в этой клетке исторически 8 смертей на 13 попыток)`);
+  // Статистику клетки СЧИТАЕМ, а не пишем числом: зашитое «8 из 13» уже
+  // разошлось с данными за сутки. Одна лишняя строка запроса дешевле, чем
+  // отчёт, который тихо врёт.
+  const cell = (await db.execute(sql`
+    with att as (
+      select p.result::text res, p.amount::float amt,
+        coalesce((select sum(q.amount) from purchases q
+          join purchase_categories cq on cq.id = q.category_id
+          where q.phone_id = p.phone_id and q.result = 'done' and q.id <> p.id
+            and cq.code = 'game_donate'
+            and q.purchased_at >  p.purchased_at - interval '24 hours'
+            and q.purchased_at <= p.purchased_at), 0)::float spent,
+        extract(epoch from (p.purchased_at - (select max(q.purchased_at) from purchases q
+          where q.phone_id = p.phone_id and q.purchased_at < p.purchased_at)))/3600.0 gap
+      from purchases p join purchase_categories c on c.id = p.category_id
+      where c.code = 'game_donate'
+    )
+    select count(*)::int n, count(*) filter (where res = 'long')::int d
+    from att
+    where gap is not null and gap < ${CORRIDOR_MIN_H} and spent + amt >= ${DANGER_EUR}
+  `)) as unknown as { n: number; d: number }[];
+  const cn = cell[0]?.n ?? 0;
+  const cd = cell[0]?.d ?? 0;
+  if (cn > 0) {
+    out.push(`   (в этой клетке исторически ${cd} смертей на ${cn} попыток — ${((cd / cn) * 100).toFixed(0)}%)`);
+  }
   return out;
 }
 
