@@ -64,6 +64,105 @@ function cases(n: number): string {
   return `${n} случаев`;
 }
 
+/**
+ * «Что можно прямо сейчас» — по каждому активному телефону: день цикла,
+ * сколько списано за скользящие сутки, сколько ещё влезает, когда снимется
+ * ограничение. Идёт и в `/corridor`, и в ежедневную сводку группы: утром
+ * это ответ на вопрос «что делать сегодня» одним взглядом.
+ */
+export async function phonesNowLines(): Promise<string[]> {
+  const now = new Date();
+  const live = (await db.execute(sql`
+    select ph.imei_last4 imei, ph.label,
+      coalesce((select sum(q.amount) from purchases q
+        join purchase_categories cq on cq.id = q.category_id
+        where q.phone_id = ph.id and q.result = 'done' and cq.code = 'game_donate'
+          and q.purchased_at > now() - interval '24 hours'), 0)::float spent,
+      (select max(q.purchased_at) from purchases q where q.phone_id = ph.id) last_at,
+      (select min(q.purchased_at) from purchases q where q.phone_id = ph.id) first_at
+    from phones ph where ph.status = 'active' order by ph.connected_at`)) as unknown as {
+    imei: string;
+    label: string | null;
+    spent: number;
+    last_at: string | null;
+    first_at: string | null;
+  }[];
+
+  if (live.length === 0) return ['📱 Активных телефонов нет.'];
+
+  const out = ['📱 Телефоны сейчас'];
+  for (const p of live) {
+    const spent = Number(p.spent);
+    const n = smallsLeft(spent);
+    const free = p.last_at
+      ? new Date(new Date(p.last_at).getTime() + CORRIDOR_MIN_H * 3600 * 1000)
+      : null;
+    // День цикла: вывод бюджета на 14-й день после ПЕРВОЙ покупки.
+    const day = p.first_at
+      ? Math.floor((now.getTime() - new Date(p.first_at).getTime()) / 86_400_000) + 1
+      : null;
+    const dayTxt = day ? `день ${day}/14 · ` : 'ещё не начат · ';
+    const freeTxt = free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
+    out.push(
+      `   …${p.imei}${p.label ? ` «${p.label}»` : ''}\n` +
+        `      ${dayTxt}€${spent} из €${DANGER_EUR} · ` +
+        (n > 0 ? `ещё ${n}×€30` : 'лимит выбран') +
+        ` · ${freeTxt}`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Нарушения протокола за последние `hours` часов: покупки в опасной клетке
+ * (интервал < 20 ч И сумма за 24 ч ≥ €120). Подсказка после покупки
+ * предупреждает в моменте, а этот блок показывает картину постфактум —
+ * чтобы отсутствие человека у бота не означало отсутствие контроля.
+ */
+export async function violationsLines(hours = 24): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    with att as (
+      select p.phone_id, p.purchased_at, p.amount::float amt, p.result::text res,
+        coalesce((select sum(q.amount) from purchases q
+          join purchase_categories cq on cq.id = q.category_id
+          where q.phone_id = p.phone_id and q.result = 'done' and q.id <> p.id
+            and cq.code = 'game_donate'
+            and q.purchased_at >  p.purchased_at - interval '24 hours'
+            and q.purchased_at <= p.purchased_at), 0)::float spent,
+        extract(epoch from (p.purchased_at - (select max(q.purchased_at) from purchases q
+          where q.phone_id = p.phone_id and q.purchased_at < p.purchased_at)))/3600.0 gap
+      from purchases p join purchase_categories c on c.id = p.category_id
+      where c.code = 'game_donate'
+        and p.purchased_at > now() - (${hours} || ' hours')::interval
+    )
+    select ph.imei_last4 imei, ph.label, a.amt, a.spent, a.gap, a.res,
+      to_char(a.purchased_at at time zone 'Europe/Moscow','HH24:MI') at
+    from att a join phones ph on ph.id = a.phone_id
+    where a.gap is not null and a.gap < ${CORRIDOR_MIN_H} and a.spent + a.amt >= ${DANGER_EUR}
+    order by a.purchased_at`)) as unknown as {
+    imei: string;
+    label: string | null;
+    amt: number;
+    spent: number;
+    gap: number;
+    res: string;
+    at: string;
+  }[];
+
+  if (rows.length === 0) return [];
+  const out = [`⚠️ Протокол нарушен (${rows.length}) — опасная клетка расклада:`];
+  for (const r of rows) {
+    const mark = r.res === 'long' ? '💀' : r.res === 'support' ? '⚠️' : '✅';
+    out.push(
+      `   ${mark} ${r.at} …${r.imei}${r.label ? ` «${r.label}»` : ''}: ` +
+        `€${Number(r.spent)} + €${Number(r.amt)} = €${Number(r.spent) + Number(r.amt)} ` +
+        `через ${Number(r.gap).toFixed(1)} ч`,
+    );
+  }
+  out.push(`   (в этой клетке исторически 8 смертей на 13 попыток)`);
+  return out;
+}
+
 export async function showCorridor(ctx: AppContext): Promise<void> {
   if (!(await requireOperator(ctx))) return;
 
@@ -146,36 +245,7 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
   lines.push('');
 
   // ---------- 5. Что можно прямо сейчас ----------
-  const now = new Date();
-  const live = (await db.execute(sql`
-    select ph.imei_last4 imei, ph.label,
-      coalesce((select sum(q.amount) from purchases q
-        join purchase_categories cq on cq.id = q.category_id
-        where q.phone_id = ph.id and q.result = 'done' and cq.code = 'game_donate'
-          and q.purchased_at > now() - interval '24 hours'), 0)::float spent,
-      (select max(q.purchased_at) from purchases q where q.phone_id = ph.id) last_at
-    from phones ph where ph.status = 'active' order by ph.connected_at`)) as unknown as {
-    imei: string;
-    label: string | null;
-    spent: number;
-    last_at: string | null;
-  }[];
-  lines.push('📱 Сейчас на активных телефонах');
-  if (live.length === 0) lines.push('   активных телефонов нет');
-  for (const p of live) {
-    const spent = Number(p.spent);
-    const n = smallsLeft(spent);
-    const free = p.last_at
-      ? new Date(new Date(p.last_at).getTime() + CORRIDOR_MIN_H * 3600 * 1000)
-      : null;
-    const freeTxt =
-      free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
-    lines.push(
-      `   …${p.imei}${p.label ? ` «${p.label}»` : ''}: €${spent} из €${DANGER_EUR} · ` +
-        (n > 0 ? `ещё ${n}×€30` : 'лимит выбран') +
-        ` · ${freeTxt}`,
-    );
-  }
+  lines.push(...(await phonesNowLines()));
 
   lines.push(
     '',

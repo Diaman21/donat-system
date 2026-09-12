@@ -6,7 +6,7 @@ import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
-import { buildPostMortem } from './postmortem.js';
+import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint } from './interval.js';
 
@@ -696,4 +696,8 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // незакрытом заказе шлём кнопку продолжения — нижнее меню persistent и никуда
   // не девается.
   await ctx.reply(parts.join('\n'), { reply_markup: continueKb ?? mainMenu() });
+
+  // Телефон умер — короткий итог цикла в группу (после ответа оператору,
+  // чтобы ошибка отправки в группу не задержала его сообщение).
+  if (result === 'long') await postCycleToGroup(ctx.api, phoneId);
 }

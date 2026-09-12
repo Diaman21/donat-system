@@ -1,7 +1,9 @@
 import { desc, eq } from 'drizzle-orm';
+import type { Api } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
 import { fmtMsk } from '../format.js';
+import { env } from '../config.js';
 
 function fmtSpan(ms: number): string {
   const totalHours = Math.floor(ms / 3_600_000);
@@ -17,6 +19,95 @@ const emoji = (r: PurchaseResultValue): string =>
 
 // сколько последних покупок показывать в таймлайне «надгробия»
 const TIMELINE = 12;
+
+/**
+ * Короткий итог цикла — для поста в группу, когда телефон завершил работу
+ * (вынужденный вывод или смерть от ошибки Apple).
+ *
+ * Зачем отдельно от `buildPostMortem`: то «надгробие» с таймлайном на 12 строк
+ * годится для лички, а в группе длинные простыни перестают читать. Здесь только
+ * то, что определяет деньги: сколько снято, за сколько дней, сколько суточных
+ * слотов ушло на крупные покупки и каким был средний интервал. История циклов
+ * копится в чате группы и её можно листать.
+ *
+ * ⚠️ Сумма убившей покупки НЕ считается потраченной: при 💀 waiver-окно всплыло
+ * вместо списания (см. CLAUDE.md).
+ */
+export async function buildCycleSummary(phoneId: string): Promise<string> {
+  const phRows = await db.select().from(phones).where(eq(phones.id, phoneId)).limit(1);
+  const ph = phRows[0];
+  if (!ph) return '';
+
+  const all = await db
+    .select({
+      amount: purchases.amount,
+      result: purchases.result,
+      at: purchases.purchasedAt,
+      catCode: purchaseCategories.code,
+    })
+    .from(purchases)
+    .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
+    .where(eq(purchases.phoneId, phoneId))
+    .orderBy(purchases.purchasedAt);
+
+  if (all.length === 0) return '';
+
+  // Деньги: только реально списанное (⚠️ и 💀 не списывают).
+  const charged = all.filter((p) => p.result === 'done');
+  const total = charged.reduce((a, p) => a + Number(p.amount), 0);
+  const tanks = all.filter((p) => p.catCode === 'game_donate');
+  const big = tanks.filter((p) => Number(p.amount) >= 100 && p.result === 'done').length;
+  const small = tanks.filter((p) => Number(p.amount) === 30 && p.result === 'done').length;
+
+  const first = all[0]!.at.getTime();
+  const end = (ph.diedAt ?? new Date()).getTime();
+  const days = (end - first) / 86_400_000;
+
+  // Средний интервал между танковыми покупками — главный параметр протокола.
+  const tankTimes = tanks.map((p) => p.at.getTime()).sort((a, b) => a - b);
+  let avgGap: number | null = null;
+  if (tankTimes.length > 1) {
+    const gaps: number[] = [];
+    for (let i = 1; i < tankTimes.length; i++) gaps.push((tankTimes[i]! - tankTimes[i - 1]!) / 3_600_000);
+    avgGap = gaps.reduce((a, g) => a + g, 0) / gaps.length;
+  }
+
+  const label = ph.label ? ` «${ph.label}»` : '';
+  const reason =
+    ph.deathReason === 'error'
+      ? '❌ ошибка Apple (достиг предела)'
+      : ph.deathReason === 'forced'
+        ? '🔄 плановый вывод бюджета'
+        : '—';
+
+  return [
+    `🏁 Цикл завершён: …${ph.imeiLast4}${label}`,
+    `Снято: €${total.toFixed(2)} за ${days.toFixed(1)} дн · ${charged.length} покупок`,
+    `Слоты: ${big} крупных (€100/105) · ${small} тридцаток`,
+    avgGap != null ? `Средний интервал: ${avgGap.toFixed(1)} ч` : null,
+    `Причина: ${reason}`,
+    days < 13 && ph.deathReason === 'forced'
+      ? `⏳ Выведен на ${days.toFixed(1)} дне — до 14-го оставалось ${(14 - days).toFixed(1)} дн.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Отправить итог цикла в группу. Ошибка отправки НЕ должна ломать основной
+ * поток: телефон уже выведен/умер, это зафиксировано в базе, а группа просто
+ * не получит пост.
+ */
+export async function postCycleToGroup(api: Api, phoneId: string): Promise<void> {
+  if (!env.groupChatId) return;
+  try {
+    const text = await buildCycleSummary(phoneId);
+    if (text) await api.sendMessage(env.groupChatId, text);
+  } catch (err) {
+    console.error('Не удалось отправить итог цикла в группу:', err);
+  }
+}
 
 // «Надгробие» телефона: даты жизни, итог и таймлайн покупок с датами/временем.
 export async function buildPostMortem(phoneId: string): Promise<string> {

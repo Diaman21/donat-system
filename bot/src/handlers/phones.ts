@@ -6,7 +6,7 @@ import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
-import { buildPostMortem } from './postmortem.js';
+import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate } from '../format.js';
 import { HIST_CB } from './history.js';
 
@@ -423,4 +423,6 @@ export async function onKillConfirm(ctx: AppContext, phoneId: string): Promise<v
   await ctx.reply(`☠️ Телефон …${upd[0]!.imei} выведен из активных.\n\n${pm}`, {
     reply_markup: mainMenu(),
   });
+  // Короткий итог цикла — в группу: история циклов копится в чате.
+  await postCycleToGroup(ctx.api, phoneId);
 }

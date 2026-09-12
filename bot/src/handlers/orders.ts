@@ -168,40 +168,67 @@ async function notifyGroupNewOrder(
   }
 }
 
-// «📝 Заказ» — попросить текст заказа.
-export async function startAddOrder(ctx: AppContext): Promise<void> {
-  if (!(await requirePrivate(ctx))) return;
-  if (!(await requireOperator(ctx))) return;
-  ctx.session.flow = { kind: 'order_text' };
-  await ctx.reply('Скинь текст заказа (как пришёл — можно просто скопировать):', {
-    reply_markup: cancelKb(),
+// Заведение заказа — общий путь для всех входов: кнопки, пошагового ввода
+// и однострочной команды «/order <текст>».
+//
+// Заказ можно завести ПРЯМО В ГРУППЕ: текст от заказчика приходит в личку,
+// копируешь его одним сообщением в группу — и оба оператора видят задачу сразу,
+// не дожидаясь друг друга.
+async function createOrder(ctx: AppContext, body: string): Promise<void> {
+  const user = ctx.dbUser;
+  if (!user) return;
+
+  const ins = await db
+    .insert(orderQueue)
+    .values({ text: body, createdBy: user.id })
+    .returning({ num: orderQueue.num });
+  const num = ins[0]!.num;
+
+  // Если заказ завели в самой группе — второй раз туда же его слать не надо:
+  // получилось бы эхо на собственное сообщение.
+  const inGroup = !!env.groupChatId && String(ctx.chat?.id) === String(env.groupChatId);
+  if (!inGroup) await notifyGroupNewOrder(ctx, num, body, user.username);
+
+  const open = await countOpen();
+  const tail = inGroup ? '' : '\n📢 Отправил в группу с тегами.';
+  await ctx.reply(`✅ Заказ #${num} добавлен.\nОткрытых сейчас: ${open}.${tail}`, {
+    // Reply-меню только в личке: в группе оно ни к чему и висело бы у всех.
+    reply_markup: inGroup ? undefined : mainMenu(),
   });
 }
 
-// Текст заказа → сохраняем.
+// «📝 Заказ» / «/order». С текстом — заводим сразу (работает и в группе),
+// без текста — пошаговый ввод, но только в личке.
+export async function startAddOrder(ctx: AppContext): Promise<void> {
+  if (!(await requireOperator(ctx))) return;
+
+  // ctx.match — строка только у команды. У hears это RegExpMatchArray,
+  // у callback-кнопки его нет вовсе, поэтому проверяем тип.
+  const inline = typeof ctx.match === 'string' ? ctx.match.trim() : '';
+  if (inline) {
+    await createOrder(ctx, inline);
+    return;
+  }
+
+  if (!(await requirePrivate(ctx))) return;
+  ctx.session.flow = { kind: 'order_text' };
+  await ctx.reply(
+    'Скинь текст заказа (как пришёл — можно просто скопировать).\n' +
+      'Или одной строкой: /order Орден + Банки — работает и в группе.',
+    { reply_markup: cancelKb() },
+  );
+}
+
+// Текст заказа пошаговым вводом → сохраняем.
 export async function onOrderText(ctx: AppContext, text: string): Promise<void> {
-  const user = ctx.dbUser;
-  if (!user) return;
+  if (!ctx.dbUser) return;
   const body = text.trim();
   if (body.length === 0) {
     await ctx.reply('Пустой заказ не сохраню. Пришли текст:', { reply_markup: cancelKb() });
     return;
   }
   ctx.session.flow = undefined;
-
-  const ins = await db
-    .insert(orderQueue)
-    .values({ text: body, createdBy: user.id })
-    .returning({ num: orderQueue.num });
-
-  const num = ins[0]!.num;
-  await notifyGroupNewOrder(ctx, num, body, user.username);
-
-  const open = await countOpen();
-  await ctx.reply(
-    `✅ Заказ #${num} добавлен.\nОткрытых сейчас: ${open}.\n📢 Отправил в группу с тегами.`,
-    { reply_markup: mainMenu() },
-  );
+  await createOrder(ctx, body);
 }
 
 async function countOpen(): Promise<number> {

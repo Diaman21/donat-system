@@ -1,6 +1,7 @@
 import { Bot } from 'grammy';
 import { env } from '../src/config.js';
 import { renderStats } from '../src/handlers/stats.js';
+import { phonesNowLines, violationsLines } from '../src/handlers/corridor.js';
 import { notifyModerator } from '../src/notify.js';
 
 // Vercel Cron: ежедневная сводка в группу.
@@ -25,8 +26,25 @@ export default async function handler(req: any, res: any): Promise<void> {
 
   const bot = new Bot(env.botToken);
   try {
+    // Порядок блоков — по убыванию срочности:
+    //   1) что пошло не так за сутки (нарушения протокола, если были);
+    //   2) что делать сегодня (состояние телефонов);
+    //   3) обычная сводка за сутки.
+    // Первые два особенно важны, когда за ботом никто не следит вручную
+    // (отпуск, один оператор): сводка становится единственным контролем.
+    const violations = await violationsLines(24);
+    const phonesNow = await phonesNowLines();
     const { text } = await renderStats('24h');
-    await bot.api.sendMessage(env.groupChatId, `🕛 Ежедневная сводка\n\n${text}`);
+
+    const parts = [
+      '🕛 Ежедневная сводка',
+      ...(violations.length ? ['', ...violations] : []),
+      '',
+      ...phonesNow,
+      '',
+      text,
+    ];
+    await bot.api.sendMessage(env.groupChatId, parts.join('\n'));
     res.statusCode = 200;
     res.end('ok');
   } catch (err) {
