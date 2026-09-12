@@ -202,10 +202,13 @@ export async function boundaryEvidence(): Promise<
     },
   ];
 
-  const out: { key: string; label: string; v: ZoneVerdict }[] = [];
-  for (const z of zones) {
-    const r = (await db.execute(
-      sql.raw(`
+  // Запросы независимы — гоняем параллельно. На Vercel каждый запрос это
+  // сетевой круг до Neon, и последовательный цикл из четырёх съедал бы
+  // секунды из лимита выполнения функции.
+  return Promise.all(
+    zones.map(async (z) => {
+      const r = (await db.execute(
+        sql.raw(`
       with att as (
         select p.result::text res,
           coalesce((select sum(q.amount) from purchases q
@@ -222,10 +225,10 @@ export async function boundaryEvidence(): Promise<
       )
       select count(*)::int n, count(*) filter (where res = 'long')::int d
       from att where gap is not null and (${z.where})`),
-    )) as unknown as { n: number; d: number }[];
-    out.push({ key: z.key, label: z.label, v: assessZone(r[0]?.n ?? 0, r[0]?.d ?? 0) });
-  }
-  return out;
+      )) as unknown as { n: number; d: number }[];
+      return { key: z.key, label: z.label, v: assessZone(r[0]?.n ?? 0, r[0]?.d ?? 0) };
+    }),
+  );
 }
 
 /**

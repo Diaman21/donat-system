@@ -37,13 +37,20 @@ export default async function handler(req: any, res: any): Promise<void> {
     //   3) обычная сводка за сутки.
     // Первые два особенно важны, когда за ботом никто не следит вручную
     // (отпуск, один оператор): сводка становится единственным контролем.
-    const violations = await violationsLines(24);
-    // Пусто, пока ни одна граница не накопила достаточно чистых наблюдений.
-    const shift = await boundaryShiftLines();
-    const phonesNow = await phonesNowLines();
-    // По понедельникам — итог прошедшей недели. В остальные дни пусто.
-    const weekly = await weeklyLines();
-    const { text } = await renderStats('24h');
+    // Блоки независимы — собираем параллельно. Каждый из них это несколько
+    // запросов к Neon, а функция на Vercel ограничена по времени: если она
+    // не успеет, сводка за день просто не придёт. Последовательный сбор
+    // тратил бы секунды на ожидание сети впустую.
+    const [violations, shift, phonesNow, weekly, stats] = await Promise.all([
+      violationsLines(24),
+      // Пусто, пока ни одна граница не накопила достаточно чистых наблюдений.
+      boundaryShiftLines(),
+      phonesNowLines(),
+      // По понедельникам — итог прошедшей недели. В остальные дни пусто.
+      weeklyLines(),
+      renderStats('24h'),
+    ]);
+    const { text } = stats;
 
     const parts = [
       '🕛 Ежедневная сводка',
