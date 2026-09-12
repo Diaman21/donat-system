@@ -3,6 +3,8 @@ import { db } from '../db/client.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { DANGER_EUR, CORRIDOR_MIN_H, smallsLeft } from './interval.js';
+import { assessZone, type ZoneVerdict } from './anomaly.js';
+import { parsePhoneModel } from './phone-model.js';
 import { hhmmMsk } from '../format.js';
 
 // «/corridor» — отчёт о «зелёном коридоре», пересчитанный ИЗ БАЗЫ.
@@ -168,6 +170,112 @@ export async function violationsLines(hours = 24): Promise<string[]> {
   return out;
 }
 
+/**
+ * Сколько «случайных экспериментов» накоплено ЗА каждой границей и что они
+ * говорят. Это ответ на вопрос «может, мы слишком осторожны?»: если в зоне
+ * за границей набралось много наблюдений и ни одной смерти — границу пора
+ * обсуждать. Порог достаточности и оценка риска — в `anomaly.ts`.
+ */
+export async function boundaryEvidence(): Promise<
+  { key: string; label: string; v: ZoneVerdict }[]
+> {
+  const zones: { key: string; label: string; where: string }[] = [
+    {
+      key: 'gap-14-20',
+      label: `интервал 14–${CORRIDOR_MIN_H} ч (сумма < €${DANGER_EUR})`,
+      where: `gap >= 14 and gap < ${CORRIDOR_MIN_H} and spent + amt < ${DANGER_EUR}`,
+    },
+    {
+      key: 'gap-10-14',
+      label: `интервал 10–14 ч (сумма < €${DANGER_EUR})`,
+      where: `gap >= 10 and gap < 14 and spent + amt < ${DANGER_EUR}`,
+    },
+    {
+      key: 'gap-lt-10',
+      label: `интервал < 10 ч (сумма < €${DANGER_EUR})`,
+      where: `gap < 10 and spent + amt < ${DANGER_EUR}`,
+    },
+    {
+      key: 'money-over',
+      label: `сумма ≥ €${DANGER_EUR} при интервале ≥ ${CORRIDOR_MIN_H} ч`,
+      where: `spent + amt >= ${DANGER_EUR} and gap >= ${CORRIDOR_MIN_H}`,
+    },
+  ];
+
+  const out: { key: string; label: string; v: ZoneVerdict }[] = [];
+  for (const z of zones) {
+    const r = (await db.execute(
+      sql.raw(`
+      with att as (
+        select p.result::text res,
+          coalesce((select sum(q.amount) from purchases q
+            join purchase_categories cq on cq.id = q.category_id
+            where q.phone_id = p.phone_id and q.result = 'done' and q.id <> p.id
+              and cq.code = 'game_donate'
+              and q.purchased_at >  p.purchased_at - interval '24 hours'
+              and q.purchased_at <= p.purchased_at), 0)::float spent,
+          p.amount::float amt,
+          extract(epoch from (p.purchased_at - (select max(q.purchased_at) from purchases q
+            where q.phone_id = p.phone_id and q.purchased_at < p.purchased_at)))/3600.0 gap
+        from purchases p join purchase_categories c on c.id = p.category_id
+        where c.code = 'game_donate'
+      )
+      select count(*)::int n, count(*) filter (where res = 'long')::int d
+      from att where gap is not null and (${z.where})`),
+    )) as unknown as { n: number; d: number }[];
+    out.push({ key: z.key, label: z.label, v: assessZone(r[0]?.n ?? 0, r[0]?.d ?? 0) });
+  }
+  return out;
+}
+
+/**
+ * Блок для ежедневной сводки: появляется, ТОЛЬКО когда какая-то граница
+ * накопила достаточно чистых наблюдений. В остальные дни молчит —
+ * иначе превратится в фон, который перестают читать.
+ */
+export async function boundaryShiftLines(): Promise<string[]> {
+  const ready = (await boundaryEvidence()).filter((z) => z.v.enough);
+  if (ready.length === 0) return [];
+  const out = ['📈 Граница может сдвинуться — накопились данные:'];
+  for (const z of ready) out.push(`   • ${z.label}: ${z.v.verdict}`);
+  out.push('   Полный расклад — /corridor. Порог меняется вручную, бот сам не двигает.');
+  return out;
+}
+
+/** Итоги по моделям телефонов — модель разбирается из текстовой метки. */
+export async function modelLines(): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    select ph.label, ph.death_reason dr,
+      coalesce((select sum(p.amount) from purchases p
+        where p.phone_id = ph.id and p.result = 'done'), 0)::float eur
+    from phones ph where ph.status = 'dead'`)) as unknown as {
+    label: string | null;
+    dr: string | null;
+    eur: number;
+  }[];
+  if (rows.length === 0) return [];
+
+  const agg = new Map<string, { n: number; eur: number; err: number }>();
+  for (const r of rows) {
+    const key = parsePhoneModel(r.label).name ?? '(модель не распознана)';
+    const a = agg.get(key) ?? { n: 0, eur: 0, err: 0 };
+    a.n++;
+    a.eur += Number(r.eur);
+    if (r.dr === 'error') a.err++;
+    agg.set(key, a);
+  }
+
+  const out = ['📱 Итог цикла по моделям (завершённые)'];
+  const sorted = [...agg.entries()].sort((a, b) => b[1].eur / b[1].n - a[1].eur / a[1].n);
+  for (const [m, a] of sorted.slice(0, 10)) {
+    out.push(
+      `   ${m}: ${a.n} шт · средний €${Math.round(a.eur / a.n)}` + (a.err ? ` · 💀 ${a.err}` : ''),
+    );
+  }
+  out.push('   ⚠️ По 1–3 телефона на модель — это наблюдения, а не закон.');
+  return out;
+}
+
 export async function showCorridor(ctx: AppContext): Promise<void> {
   if (!(await requireOperator(ctx))) return;
 
@@ -249,7 +357,15 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
     lines.push(`   ${r.n30}×€30 · ${cases(r.cases).padStart(11)} · ${r.deaths} 💀`);
   lines.push('');
 
-  // ---------- 5. Что можно прямо сейчас ----------
+  // ---------- 5. Накопленные доказательства за границами ----------
+  lines.push('🧪 Что накоплено ЗА границами (случайные эксперименты)');
+  for (const z of await boundaryEvidence()) lines.push(`   ${z.label}\n      ${z.v.verdict}`);
+  lines.push('');
+
+  // ---------- 6. Модели ----------
+  lines.push(...(await modelLines()), '');
+
+  // ---------- 7. Что можно прямо сейчас ----------
   lines.push(...(await phonesNowLines()));
 
   lines.push(
@@ -258,5 +374,14 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
     'Если данные выше порога накопятся без смертей — порог сдвигаем.',
   );
 
-  await ctx.reply(lines.join('\n'));
+  // Отчёт растёт вместе с числом моделей и зон. Telegram молча отклонит
+  // сообщение длиннее 4096 символов, поэтому режем сами и говорим об этом
+  // вслух — молчаливая потеря хвоста хуже, чем видимая обрезка.
+  const text = lines.join('\n');
+  const LIMIT = 4000;
+  await ctx.reply(
+    text.length <= LIMIT
+      ? text
+      : `${text.slice(0, LIMIT)}\n\n… отчёт обрезан (${text.length} символов при лимите 4096).`,
+  );
 }

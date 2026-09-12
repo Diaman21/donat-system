@@ -1,7 +1,11 @@
 import { Bot } from 'grammy';
 import { env } from '../src/config.js';
 import { renderStats } from '../src/handlers/stats.js';
-import { phonesNowLines, violationsLines } from '../src/handlers/corridor.js';
+import {
+  phonesNowLines,
+  violationsLines,
+  boundaryShiftLines,
+} from '../src/handlers/corridor.js';
 import { weeklyLines } from '../src/handlers/weekly.js';
 import { notifyModerator } from '../src/notify.js';
 
@@ -34,6 +38,8 @@ export default async function handler(req: any, res: any): Promise<void> {
     // Первые два особенно важны, когда за ботом никто не следит вручную
     // (отпуск, один оператор): сводка становится единственным контролем.
     const violations = await violationsLines(24);
+    // Пусто, пока ни одна граница не накопила достаточно чистых наблюдений.
+    const shift = await boundaryShiftLines();
     const phonesNow = await phonesNowLines();
     // По понедельникам — итог прошедшей недели. В остальные дни пусто.
     const weekly = await weeklyLines();
@@ -42,6 +48,7 @@ export default async function handler(req: any, res: any): Promise<void> {
     const parts = [
       '🕛 Ежедневная сводка',
       ...(violations.length ? ['', ...violations] : []),
+      ...(shift.length ? ['', ...shift] : []),
       '',
       ...phonesNow,
       ...(weekly.length ? ['', ...weekly] : []),

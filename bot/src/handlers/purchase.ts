@@ -9,6 +9,7 @@ import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint } from './interval.js';
+import { classifyPurchase, anomalyLines } from './anomaly.js';
 import { daysBetweenIso, mskTodayIso } from '../format.js';
 
 // Префиксы callback-данных
@@ -605,6 +606,26 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // Заказ, по которому делали закупку (если пришли из «📥 Заказы» → «✅ Выполнить»).
   const orderId = ctx.session.pendingOrderId ?? null;
 
+  // Состояние телефона ДО записи — для разбора аномалий. Снимаем именно
+  // сейчас: после вставки пришлось бы вычитать собственную покупку из всех
+  // сумм и интервалов, а это ровно тот арифметический узел, где заводятся
+  // тихие ошибки.
+  const before = (await db.execute(sql`
+    select
+      extract(epoch from (now() - max(p.purchased_at)))/3600.0 gap_h,
+      coalesce(sum(p.amount) filter (
+        where p.result = 'done' and c.code = 'game_donate'
+          and p.purchased_at > now() - interval '24 hours'), 0)::float spent24,
+      to_char((min(p.purchased_at) at time zone 'Europe/Moscow')::date,'YYYY-MM-DD') first_day,
+      coalesce(bool_or(p.amount >= 30 and c.code = 'game_donate'), false) had_battle
+    from purchases p join purchase_categories c on c.id = p.category_id
+    where p.phone_id = ${flow.phoneId}`)) as unknown as {
+    gap_h: number | null;
+    spent24: number;
+    first_day: string | null;
+    had_battle: boolean;
+  }[];
+
   const rows = Array.from({ length: flow.qty }, (_, i) => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
@@ -679,16 +700,24 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     // Фаза цикла: день от ПЕРВОЙ покупки на телефоне и были ли боевые суммы.
     // Нужно, чтобы на свежем телефоне не предлагать тридцатки: по деньгам они
     // проходят, но по протоколу там ещё разогрев.
-    const ph = (await db.execute(sql`
-      select
-        to_char((min(purchased_at) at time zone 'Europe/Moscow')::date,'YYYY-MM-DD') first_day,
-        bool_or(amount >= 30) had_battle
-      from purchases where phone_id = ${phoneId}`)) as unknown as {
-      first_day: string | null;
-      had_battle: boolean | null;
-    }[];
-    const firstDay = ph[0]?.first_day ?? null;
+    const st = before[0];
+    const firstDay = st?.first_day ?? null;
     const dayOfCycle = firstDay ? daysBetweenIso(firstDay, mskTodayIso()) + 1 : null;
+
+    // Разбор отклонений — по состоянию ДО этой покупки. Сначала говорим,
+    // что произошло, потом — что делать дальше.
+    const anomalies = classifyPurchase({
+      amount: Number(amount),
+      result,
+      gapH: st?.gap_h == null ? null : Number(st.gap_h),
+      spent24: Number(st?.spent24 ?? 0),
+      dayOfCycle,
+      hadBattleBefore: Boolean(st?.had_battle),
+      internet,
+      isTank: true,
+    });
+    const aLines = anomalyLines(anomalies);
+    if (aLines.length > 0) parts.push('', ...aLines);
 
     parts.push(
       '',
@@ -698,7 +727,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
         result: result === 'support' ? 'support' : 'done',
         orderStillOpen: Boolean(orderId && orderStillOpen),
         dayOfCycle,
-        hadBattle: ph[0]?.had_battle ?? true,
+        hadBattle: Boolean(st?.had_battle),
       }),
     );
   }
