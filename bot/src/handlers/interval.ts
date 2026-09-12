@@ -1,4 +1,4 @@
-import { hhmmMsk, mskIsoOfDate, daysBetweenIso, ddmmOf } from '../format.js';
+import { hhmmMsk, mskIsoOfDate, daysBetweenIso, ddmmOf, addDaysIso } from '../format.js';
 
 // Подсказка «когда и на сколько можно следующую закупку на этом телефоне».
 //
@@ -39,8 +39,32 @@ export const DANGER_EUR = 120;
 export const CORRIDOR_MIN_H = 20;
 /** Минимальный боевой номинал — им меряем остаток («ещё 2 тридцатки»). */
 export const SMALL_EUR = 30;
+/** Крупный номинал — цель протокола: втрое больше денег за тот же суточный слот. */
+export const BIG_EUR = 100;
 /** Отлёжка после ⚠️ support — примерно сутки (из диалога Apple, см. CLAUDE.md). */
 export const SUPPORT_REST_H = 24;
+
+// ---------------------------------------------------------------------------
+// Фаза цикла телефона. Правило лимита (выше) описывает БЕЗОПАСНОСТЬ, но ничего
+// не знает о СТРАТЕГИИ: на свежем телефоне €2+€30 укладывается в €120, однако
+// по протоколу тридцаток там быть не должно — телефон ещё на разогреве.
+//
+// Длина разогрева — из данных (31 телефон, разбор 13.09.2026):
+//   1 день  — 7 телефонов, средний итог €235
+//   2 дня   — 14 телефонов, средний итог €462  ← и самый частый, и лучший
+//   3 дня   — 4 телефона,  €281
+//   4 дня   — 3 телефона,  €221
+// Все рекордсмены шли ровно два дня: …8094 (€839), …5152 (€799), …1023 (€634),
+// …6538 (€559) — у каждого 2×€2 за 2 дня. Логика простая: окно жизни 14 дней,
+// каждый лишний день разогрева — день, потраченный на €2 вместо €100.
+// ---------------------------------------------------------------------------
+
+/** Сколько дней разогрева по €2 (по одной покупке в сутки). */
+export const WARMUP_DAYS = 2;
+/** На какой день после первой покупки выводится бюджет. */
+export const WITHDRAW_DAYS = 14;
+/** С какого дня предупреждаем о выводе (буфер). */
+export const WARN_FROM_DAY = 12;
 
 const H = 3600 * 1000;
 const WINDOW_MS = 24 * H;
@@ -128,11 +152,22 @@ export interface HintInput {
   result: 'done' | 'support';
   /** По заказу остались позиции. */
   orderStillOpen?: boolean;
+  /** День цикла: 1 — день первой покупки на телефоне. null, если неизвестен. */
+  dayOfCycle?: number | null;
+  /** Была ли на телефоне хоть одна боевая покупка (≥ €30). */
+  hadBattle?: boolean;
 }
 
 /** Строки подсказки для сообщения после записи покупки. */
 export function nextPurchaseHint(input: HintInput): string[] {
-  const { now, charges, result, orderStillOpen = false } = input;
+  const {
+    now,
+    charges,
+    result,
+    orderStillOpen = false,
+    dayOfCycle = null,
+    hadBattle = true,
+  } = input;
   const lines = ['⏳ Следующая закупка на этом телефоне:'];
 
   // ⚠️ support — платёж отклонён, телефон жив, но нужна отлёжка ~сутки.
@@ -144,9 +179,56 @@ export function nextPurchaseHint(input: HintInput): string[] {
     return lines;
   }
 
+  // ---------- РАЗОГРЕВ ----------
+  // Телефон на разогреве, пока не было ни одной боевой покупки и идут первые
+  // WARMUP_DAYS суток. Здесь правило лимита €120 НЕ применяем: €2 + €30 в него
+  // укладывается, но тридцатке на разогреве не место — это вопрос стратегии,
+  // а не безопасности. Ровно на этом подсказка и ошибалась до 13.09.2026.
+  if (!hadBattle && dayOfCycle != null && dayOfCycle <= WARMUP_DAYS) {
+    const tomorrow = new Date(now.getTime() + 24 * H); // разогрев — одна €2 в сутки
+    if (dayOfCycle < WARMUP_DAYS) {
+      const battleFrom = ddmmOf(addDaysIso(mskIsoOfDate(now), WARMUP_DAYS + 1 - dayOfCycle));
+      lines.push(
+        `   🔥 Разогрев, день ${dayOfCycle} из ${WARMUP_DAYS} — по одной €2 в сутки`,
+        `   🟢 следующая €2 — ${when(tomorrow, now)}`,
+        `   📅 Боевые суммы (€100/€105) — с ${battleFrom}`,
+      );
+    } else {
+      lines.push(
+        `   🔥 Разогрев завершён — ${WARMUP_DAYS} дня по €2, как у лучших циклов`,
+        `   🟢 первая боевая — ${when(tomorrow, now)}, лучше сразу €100/€105`,
+        '   💡 Слот в сутках один, сотня даёт втрое больше тридцатки',
+      );
+    }
+    if (orderStillOpen) {
+      lines.push('   ↪️ Остальные позиции заказа — с ДРУГОГО телефона, не с этого.');
+    }
+    return lines;
+  }
+
   const spent = spentInWindow(charges, now);
   const free = new Date(now.getTime() + CORRIDOR_MIN_H * H); // после 20 ч сумма не важна
   const n = smallsLeft(spent);
+
+  // ---------- РАЗОГРЕВ ЗАТЯНУЛСЯ ----------
+  // Боевых покупок ещё не было, а дней уже больше нормы. Каждый такой день —
+  // день из четырнадцати, потраченный на €2 вместо €100. Тридцатки здесь НЕ
+  // предлагаем: первая боевая покупка должна быть крупной, иначе слот уходит
+  // втрое дешевле, а дней в окне и так осталось меньше.
+  if (!hadBattle && dayOfCycle != null && dayOfCycle > WARMUP_DAYS) {
+    const bigFitsNow = fits(spent, BIG_EUR);
+    const bigAt = bigFitsNow ? null : earliestFitting(charges, BIG_EUR, now);
+    lines.push(
+      `   🔥 Разогрев идёт ${dayOfCycle}-й день вместо ${WARMUP_DAYS} — пора на €100/€105`,
+      bigFitsNow
+        ? `   🟢 крупную можно прямо сейчас (за 24 ч: €${spent} из €${DANGER_EUR})`
+        : `   🟢 крупную — с ${when(bigAt ?? free, now)}`,
+    );
+    if (orderStillOpen) {
+      lines.push('   ↪️ Остальные позиции заказа — с ДРУГОГО телефона, не с этого.');
+    }
+    return lines;
+  }
 
   if (n > 0) {
     lines.push(`   💚 можно ещё ${plural30(n)} (за 24 ч: €${spent} из €${DANGER_EUR})`);
@@ -162,6 +244,17 @@ export function nextPurchaseHint(input: HintInput): string[] {
     );
   }
   lines.push(`   🟢 без ограничений с ${when(free, now)} — тогда можно и крупную`);
+
+  // Конец цикла: бюджет выводится на 14-й день. Громкий блок есть в сводке
+  // группы, но здесь он попадает оператору прямо в момент работы с телефоном.
+  if (dayOfCycle != null && dayOfCycle >= WITHDRAW_DAYS) {
+    lines.push(`   🔴 День ${dayOfCycle} из ${WITHDRAW_DAYS} — ПОРА ВЫВОДИТЬ бюджет`);
+  } else if (dayOfCycle != null && dayOfCycle >= WARN_FROM_DAY) {
+    lines.push(
+      `   📅 День ${dayOfCycle} из ${WITHDRAW_DAYS} — вывод бюджета через ` +
+        `${WITHDRAW_DAYS - dayOfCycle} дн, слоты не тратить зря`,
+    );
+  }
 
   if (orderStillOpen) {
     lines.push('   ↪️ Остальные позиции заказа — с ДРУГОГО телефона, не с этого.');

@@ -6,6 +6,7 @@ import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
 import { mskTodayIso, daysBetweenIso, addDaysIso, ddmmOf } from '../format.js';
+import { WITHDRAW_DAYS, WARN_FROM_DAY } from './interval.js';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d
@@ -20,10 +21,10 @@ function money(n: number): string {
   return `€${n.toFixed(2)}`;
 }
 
-// Вывод бюджета — на 14-й день после ПЕРВОЙ покупки на телефон.
-// Предупреждаем заранее, с 12-го дня (буфер на всякий случай).
-const WITHDRAW_DAYS = 14;
-const WARN_FROM_DAY = 12;
+// Вывод бюджета — на 14-й день после ПЕРВОЙ покупки на телефон, предупреждаем
+// с 12-го. Константы живут в interval.ts: их же использует подсказка после
+// покупки, а держать два одинаковых числа в разных файлах — верный способ
+// однажды поправить одно и забыть другое.
 
 // Громкий блок «пора выводить бюджет» — для верха ежедневного отчёта.
 // Появляется ТОЛЬКО когда есть активные телефоны на 12+ дне.

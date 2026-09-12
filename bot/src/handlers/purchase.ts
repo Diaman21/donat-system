@@ -9,6 +9,7 @@ import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint } from './interval.js';
+import { daysBetweenIso, mskTodayIso } from '../format.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -675,6 +676,20 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
           gte(purchases.purchasedAt, new Date(Date.now() - 24 * 3600 * 1000)),
         ),
       );
+    // Фаза цикла: день от ПЕРВОЙ покупки на телефоне и были ли боевые суммы.
+    // Нужно, чтобы на свежем телефоне не предлагать тридцатки: по деньгам они
+    // проходят, но по протоколу там ещё разогрев.
+    const ph = (await db.execute(sql`
+      select
+        to_char((min(purchased_at) at time zone 'Europe/Moscow')::date,'YYYY-MM-DD') first_day,
+        bool_or(amount >= 30) had_battle
+      from purchases where phone_id = ${phoneId}`)) as unknown as {
+      first_day: string | null;
+      had_battle: boolean | null;
+    }[];
+    const firstDay = ph[0]?.first_day ?? null;
+    const dayOfCycle = firstDay ? daysBetweenIso(firstDay, mskTodayIso()) + 1 : null;
+
     parts.push(
       '',
       ...nextPurchaseHint({
@@ -682,6 +697,8 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
         charges: charged.map((c) => ({ at: new Date(c.at), amount: Number(c.amount) })),
         result: result === 'support' ? 'support' : 'done',
         orderStillOpen: Boolean(orderId && orderStillOpen),
+        dayOfCycle,
+        hadBattle: ph[0]?.had_battle ?? true,
       }),
     );
   }

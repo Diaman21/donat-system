@@ -10,6 +10,9 @@ import {
   earliestFitting,
   dayWord,
   nextPurchaseHint,
+  WARMUP_DAYS,
+  WITHDRAW_DAYS,
+  WARN_FROM_DAY,
   type Charge,
 } from './interval.js';
 
@@ -206,4 +209,139 @@ test('инвариант: предложенное количество трид
       `spent=${spent}: можно было предложить ещё одну`,
     );
   }
+});
+
+// ---------- фаза цикла: разогрев ----------
+//
+// Реальный промах 13.09.2026: на свежем телефоне …7276 после второй €2 бот
+// написал «можно ещё 3 тридцатки». По деньгам верно (€4 из €120), по протоколу
+// нет — телефон был на разогреве. Лимит описывает БЕЗОПАСНОСТЬ, фаза — СТРАТЕГИЮ.
+
+test('разогрев день 1: тридцатки НЕ предлагаются', () => {
+  const now = at('2026-09-11T20:56:00.000Z'); // 23:56 МСК
+  const lines = nextPurchaseHint({
+    now,
+    charges: [ch('2026-09-11T20:56:00.000Z', 2)],
+    result: 'done',
+    dayOfCycle: 1,
+    hadBattle: false,
+  });
+  const text = lines.join('\n');
+  // Проверяем смысл, а не слово: подсказка не должна ПРЕДЛАГАТЬ тридцатки.
+  assert.ok(!text.includes('можно ещё'), `на разогреве тридцатки не предлагаем:\n${text}`);
+  assert.ok(!text.includes('€120'), 'про лимит денег на разогреве не говорим');
+  assert.ok(lines[1]?.includes('Разогрев, день 1 из 2'));
+  assert.ok(lines[2]?.includes('следующая €2'));
+  assert.ok(lines[3]?.includes('Боевые суммы'));
+});
+
+test('разогрев день 1: боевые с третьего дня, дата верная', () => {
+  // Первая покупка 11.09 → день 3 это 13.09.
+  const lines = nextPurchaseHint({
+    now: at('2026-09-11T09:00:00.000Z'),
+    charges: [ch('2026-09-11T09:00:00.000Z', 2)],
+    result: 'done',
+    dayOfCycle: 1,
+    hadBattle: false,
+  });
+  assert.ok(lines[3]?.includes('13.09'), `ожидали 13.09: ${lines[3]}`);
+});
+
+test('разогрев день 2 (случай …7276): зовём на боевую, а не на тридцатки', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-12T16:20:00.000Z'), // 19:20 МСК
+    charges: [ch('2026-09-12T16:20:00.000Z', 2)],
+    result: 'done',
+    dayOfCycle: 2,
+    hadBattle: false,
+  });
+  const text = lines.join('\n');
+  assert.ok(!text.includes('можно ещё'), `тридцатки не предлагаем:\n${text}`);
+  assert.ok(!text.includes('лимит 24 ч'), 'на разогреве про лимит денег не говорим');
+  assert.ok(lines[1]?.includes('Разогрев завершён'));
+  assert.ok(lines[2]?.includes('первая боевая'));
+  assert.ok(lines[2]?.includes('€100/€105'));
+});
+
+test('после первой боевой разогрев больше не упоминается', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-13T09:00:00.000Z'),
+    charges: [ch('2026-09-13T09:00:00.000Z', 100)],
+    result: 'done',
+    dayOfCycle: 3,
+    hadBattle: true,
+  });
+  const text = lines.join('\n');
+  assert.ok(!text.includes('Разогрев'));
+  assert.ok(text.includes('€120'), 'в боевой фазе лимит показываем');
+});
+
+test('затянувшийся разогрев: подсказка зовёт на боевые', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-15T09:00:00.000Z'),
+    charges: [ch('2026-09-15T09:00:00.000Z', 2)],
+    result: 'done',
+    dayOfCycle: 5,
+    hadBattle: false,
+  });
+  const text = lines.join('\n');
+  assert.ok(lines[1]?.includes('5-й день вместо 2'));
+  assert.ok(text.includes('€100/€105'));
+  // Первая боевая должна быть крупной — тридцатки тут не предлагаем.
+  assert.ok(!text.includes('можно ещё'), `тридцатки не предлагаем:\n${text}`);
+  assert.ok(lines[2]?.includes('крупную'), text);
+});
+
+test('без данных о фазе ведём себя как раньше (боевая логика)', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-11T09:00:00.000Z'),
+    charges: [ch('2026-09-11T09:00:00.000Z', 30)],
+    result: 'done',
+  });
+  assert.ok(lines[1]?.includes('можно ещё 2 тридцатки'));
+});
+
+// ---------- конец цикла ----------
+
+test('день 12: напоминание о скором выводе бюджета', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-11T09:00:00.000Z'),
+    charges: [ch('2026-09-11T09:00:00.000Z', 100)],
+    result: 'done',
+    dayOfCycle: 12,
+    hadBattle: true,
+  });
+  const text = lines.join('\n');
+  assert.ok(text.includes('День 12 из 14'), text);
+  assert.ok(text.includes('через 2 дн'), text);
+});
+
+test('день 14: пора выводить', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-11T09:00:00.000Z'),
+    charges: [ch('2026-09-11T09:00:00.000Z', 100)],
+    result: 'done',
+    dayOfCycle: 14,
+    hadBattle: true,
+  });
+  assert.ok(lines.join('\n').includes('ПОРА ВЫВОДИТЬ'));
+});
+
+test('день 11: про вывод ещё молчим', () => {
+  const lines = nextPurchaseHint({
+    now: at('2026-09-11T09:00:00.000Z'),
+    charges: [ch('2026-09-11T09:00:00.000Z', 100)],
+    result: 'done',
+    dayOfCycle: 11,
+    hadBattle: true,
+  });
+  assert.ok(!lines.join('\n').includes('День 11'));
+});
+
+test('пороги фазы согласованы между собой', () => {
+  assert.equal(WARMUP_DAYS, 2);
+  assert.equal(WITHDRAW_DAYS, 14);
+  assert.equal(WARN_FROM_DAY, 12);
+  assert.ok(WARN_FROM_DAY < WITHDRAW_DAYS, 'предупреждать нужно ДО вывода');
+  assert.ok(WARMUP_DAYS < WARN_FROM_DAY, 'разогрев должен кончаться задолго до вывода');
 });
