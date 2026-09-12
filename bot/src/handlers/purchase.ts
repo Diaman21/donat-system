@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
@@ -656,12 +656,34 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     }
   }
 
-  // Подсказка «когда можно следующую» — главный рычаг протокола.
+  // Подсказка «когда и на сколько можно следующую» — главный рычаг протокола.
   // Показываем ТОЛЬКО для танков: у ВК методика противоположная (серии покупок
-  // подряд), там порог 20 ч был бы неверен и превратился бы в спам.
+  // подряд), там лимит 24 ч был бы неверен и превратился бы в спам.
   // При 💀 не показываем вовсе — телефон мёртв, следующей покупки не будет.
   if (flow.categoryCode === 'game_donate' && result !== 'long') {
-    parts.push('', ...nextPurchaseHint(new Date(), Boolean(orderId && orderStillOpen)));
+    // Считаем РЕАЛЬНО списанное за скользящие сутки: ✅ только. ⚠️ и 💀 денег
+    // не тратят (платёж отклонён / waiver вместо списания) — см. CLAUDE.md.
+    const charged = await db
+      .select({ at: purchases.purchasedAt, amount: purchases.amount })
+      .from(purchases)
+      .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
+      .where(
+        and(
+          eq(purchases.phoneId, phoneId),
+          eq(purchases.result, 'done'),
+          eq(purchaseCategories.code, 'game_donate'),
+          gte(purchases.purchasedAt, new Date(Date.now() - 24 * 3600 * 1000)),
+        ),
+      );
+    parts.push(
+      '',
+      ...nextPurchaseHint({
+        now: new Date(),
+        charges: charged.map((c) => ({ at: new Date(c.at), amount: Number(c.amount) })),
+        result: result === 'support' ? 'support' : 'done',
+        orderStillOpen: Boolean(orderId && orderStillOpen),
+      }),
+    );
   }
 
   // При 💀 — телефон умер (триггер). Показываем «надгробие».

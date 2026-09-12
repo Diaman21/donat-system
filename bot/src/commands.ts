@@ -7,6 +7,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: 'orders', description: 'Открытые заказы' },
   { command: 'stats', description: 'Статистика' },
   { command: 'vk', description: 'ВК-сводка по дням' },
+  { command: 'corridor', description: 'Зелёный коридор — пересчёт по данным' },
   { command: 'period', description: 'Отчёт по датам (фильтр + детализация)' },
   { command: 'phones', description: 'Телефоны' },
   { command: 'find', description: 'Поиск телефона по 4 цифрам IMEI' },

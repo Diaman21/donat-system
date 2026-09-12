@@ -56,6 +56,7 @@ import { showRecent, startDeleteLast, confirmDeleteLast, DELLAST_CB } from './ha
 import { exportCsv } from './handlers/export.js';
 import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js';
 import { showVkReport } from './handlers/vk.js';
+import { showCorridor } from './handlers/corridor.js';
 import {
   startAddOrder,
   onOrderText,
@@ -110,6 +111,7 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.command('start', handleStart);
   bot.command('stats', showStats);
   bot.command('vk', showVkReport);
+  bot.command('corridor', showCorridor);
   bot.command('period', startReport);
   bot.command('phones', listPhones);
   bot.command('find', startFindPhone);
