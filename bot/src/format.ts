@@ -53,10 +53,15 @@ export function mskNow(): { y: number; m: number; d: number } {
   return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() };
 }
 
+/** Календарная дата по МСК для произвольного момента: «YYYY-MM-DD». */
+export function mskIsoOfDate(at: Date | string | number): string {
+  const t = new Date(new Date(at).getTime() + MSK_OFFSET_MS);
+  return isoOf(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+}
+
 /** Сегодня по МСК как «YYYY-MM-DD». */
 export function mskTodayIso(): string {
-  const { y, m, d } = mskNow();
-  return isoOf(y, m, d);
+  return mskIsoOfDate(new Date());
 }
 
 /** Сдвиг даты на delta суток: addDaysIso('2026-09-12', -1) → '2026-09-11'. */

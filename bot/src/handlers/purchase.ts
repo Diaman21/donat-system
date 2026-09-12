@@ -8,6 +8,7 @@ import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
+import { nextPurchaseHint } from './interval.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -640,8 +641,10 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // При ⚠️/💀 покупка была, но позиция не закрыта: саппорт — повторить завтра,
   // смерть — доделать на другом телефоне.
   let continueKb: InlineKeyboard | undefined;
+  let orderStillOpen = false;
   if (orderId) {
     const r = await closeOrderIfDone(ctx, orderId, result);
+    orderStillOpen = r.stillOpen;
     parts.push('', r.text);
     // Если заказ не доделан — даём продолжить прямо отсюда, не гоняя оператора
     // обратно в список заказов.
@@ -651,6 +654,14 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
         .row()
         .text('📥 К списку заказов', `${ORD_CB}list`);
     }
+  }
+
+  // Подсказка «когда можно следующую» — главный рычаг протокола.
+  // Показываем ТОЛЬКО для танков: у ВК методика противоположная (серии покупок
+  // подряд), там порог 20 ч был бы неверен и превратился бы в спам.
+  // При 💀 не показываем вовсе — телефон мёртв, следующей покупки не будет.
+  if (flow.categoryCode === 'game_donate' && result !== 'long') {
+    parts.push('', ...nextPurchaseHint(new Date(), Boolean(orderId && orderStillOpen)));
   }
 
   // При 💀 — телефон умер (триггер). Показываем «надгробие».
