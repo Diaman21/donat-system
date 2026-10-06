@@ -5,6 +5,7 @@ import {
   phonesNowLines,
   violationsLines,
   boundaryShiftLines,
+  idleLines,
 } from '../src/handlers/corridor.js';
 import { weeklyLines } from '../src/handlers/weekly.js';
 import { notifyModerator } from '../src/notify.js';
@@ -41,8 +42,10 @@ export default async function handler(req: any, res: any): Promise<void> {
     // запросов к Neon, а функция на Vercel ограничена по времени: если она
     // не успеет, сводка за день просто не придёт. Последовательный сбор
     // тратил бы секунды на ожидание сети впустую.
-    const [violations, shift, phonesNow, weekly, stats] = await Promise.all([
+    const [violations, idle, shift, phonesNow, weekly, stats] = await Promise.all([
       violationsLines(24),
+      // Пусто, пока никто не простаивает дольше порога.
+      idleLines(),
       // Пусто, пока ни одна граница не накопила достаточно чистых наблюдений.
       boundaryShiftLines(),
       phonesNowLines(),
@@ -55,6 +58,9 @@ export default async function handler(req: any, res: any): Promise<void> {
     const parts = [
       '🕛 Ежедневная сводка',
       ...(violations.length ? ['', ...violations] : []),
+      // Простой выше нарушений по частоте: за три недели так сгорело
+      // 39 слотов из 78 — больше, чем принесли все тридцатки за период.
+      ...(idle.length ? ['', ...idle] : []),
       ...(shift.length ? ['', ...shift] : []),
       '',
       ...phonesNow,

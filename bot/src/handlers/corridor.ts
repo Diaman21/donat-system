@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
-import { DANGER_EUR, CORRIDOR_MIN_H, smallsLeft } from './interval.js';
+import { DANGER_EUR, CORRIDOR_MIN_H, IDLE_WARN_H, WITHDRAW_DAYS, smallsLeft } from './interval.js';
 import { assessZone, type ZoneVerdict } from './anomaly.js';
 import { parsePhoneModel } from './phone-model.js';
 import { hhmmMsk } from '../format.js';
@@ -64,6 +64,16 @@ function cases(n: number): string {
   if (last === 1) return `${n} случай`;
   if (last >= 2 && last <= 4) return `${n} случая`;
   return `${n} случаев`;
+}
+
+// «1 покупка · 2 покупки · 5 покупок»
+function buys(n: number): string {
+  const last = n % 10;
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 14) return `${n} покупок`;
+  if (last === 1) return `${n} покупка`;
+  if (last >= 2 && last <= 4) return `${n} покупки`;
+  return `${n} покупок`;
 }
 
 /**
@@ -192,6 +202,54 @@ export async function violationsLines(hours = 24): Promise<string[]> {
   if (cn > 0) {
     out.push(`   (в этой клетке исторически ${cd} смертей на ${cn} попыток — ${((cd / cn) * 100).toFixed(0)}%)`);
   }
+  return out;
+}
+
+/**
+ * Телефоны, которые простаивают: активны, но давно без закупки.
+ *
+ * Блок появляется, ТОЛЬКО когда есть такие — иначе станет фоном.
+ * Логика та же, что у «Протокол нарушен»: сводка должна кричать о том,
+ * что требует действия, а не перечислять всё подряд.
+ *
+ * ⚠️ Слот нельзя накопить. У телефона 14 дней жизни и один слот в сутки:
+ * день без закупки сгорает насовсем. За три недели так сгорело 39 слотов
+ * из 78 — больше, чем принесли все тридцатки за тот же период.
+ */
+export async function idleLines(): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    select ph.imei_last4 imei, ph.label,
+      round(extract(epoch from (now() - max(p.purchased_at)))/3600.0)::int idle_h,
+      round(extract(epoch from (now() - min(p.purchased_at)))/86400.0)::int day_n,
+      count(*) filter (where p.result = 'done' and p.amount >= 30)::int battles,
+      count(*)::int cnt
+    from phones ph join purchases p on p.phone_id = ph.id
+    where ph.status = 'active'
+    group by ph.id, ph.imei_last4, ph.label
+    having extract(epoch from (now() - max(p.purchased_at)))/3600.0 >= ${IDLE_WARN_H}
+    order by 3 desc`)) as unknown as {
+    imei: string;
+    label: string | null;
+    idle_h: number;
+    day_n: number;
+    battles: number;
+    cnt: number;
+  }[];
+  if (rows.length === 0) return [];
+
+  const out = [`⏰ Простаивают (${rows.length}) — слот горит:`];
+  for (const r of rows) {
+    const day = Number(r.day_n) + 1;
+    const left = Math.max(0, WITHDRAW_DAYS - day);
+    // Телефон без боевых покупок на N-й день — это застрявший разогрев,
+    // а не просто пауза: у него ещё и не начался заработок.
+    const why =
+      Number(r.battles) === 0
+        ? `разогрев не продолжен (${buys(Number(r.cnt))}, боевых нет)`
+        : `день ${day}/${WITHDRAW_DAYS}, осталось ${left} дн`;
+    out.push(`   …${r.imei}${r.label ? ` «${r.label}»` : ''}: ${r.idle_h} ч без закупки · ${why}`);
+  }
+  out.push(`   Пауза дольше ${IDLE_WARN_H} ч безопасна, но за 14 дней влезет 7 покупок вместо 12.`);
   return out;
 }
 
@@ -395,6 +453,8 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
 
   // ---------- 7. Что можно прямо сейчас ----------
   lines.push(...(await phonesNowLines()));
+  const idle = await idleLines();
+  if (idle.length > 0) lines.push("", ...idle);
 
   lines.push(
     '',
