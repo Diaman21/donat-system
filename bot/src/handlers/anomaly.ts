@@ -3,7 +3,7 @@ import {
   CORRIDOR_MIN_H,
   MIN_GAP_WEAK_H,
   WARMUP_DAYS,
-  WITHDRAW_DAYS,
+  withdrawStage,
 } from './interval.js';
 
 // Аномалии: заметить отклонение и ИЗВЛЕЧЬ ИЗ НЕГО ЗНАНИЕ.
@@ -118,11 +118,13 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
     });
   }
 
-  // 5. Цикл вышел за 14 дней.
-  if (f.dayOfCycle != null && f.dayOfCycle > WITHDRAW_DAYS) {
+  // 5. Цикл вышел за 14 дней. Порог — та же withdrawStage, что в сводке,
+  // и номер дня в той же нумерации (день первой покупки = 0 прошедших суток),
+  // иначе сводка и сообщение после покупки назвали бы разные дни.
+  if (f.dayOfCycle != null && withdrawStage(f.dayOfCycle - 1) === 'due') {
     out.push({
       severity: 'note',
-      text: `${f.dayOfCycle}-й день цикла — вывод бюджета просрочен`,
+      text: `${f.dayOfCycle - 1}-й день цикла — вывод бюджета просрочен`,
     });
   }
 

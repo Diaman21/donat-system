@@ -109,10 +109,11 @@ export async function phonesNowLines(): Promise<string[]> {
     const free = p.last_at
       ? new Date(new Date(p.last_at).getTime() + CORRIDOR_MIN_H * 3600 * 1000)
       : null;
-    // День цикла: вывод бюджета на 14-й день после ПЕРВОЙ покупки.
-    // Считает общий хелпер (`format.ts`) — здесь была своя формула по часам.
-    const day = p.first_at ? cycleDayMsk(p.first_at, now) : null;
-    const dayTxt = day ? `день ${day}/14 · ` : 'ещё не начат · ';
+    // Прошедшие сутки цикла — в той же нумерации, что алерт «‼️ ВЫВОД БЮДЖЕТА»
+    // в этой же сводке (день первой покупки = 0, вывод — когда прошло 14).
+    // Иначе рядом стояли бы «12-й день» и «день 13/14» про один телефон.
+    const passed = p.first_at ? cycleDayMsk(p.first_at, now) - 1 : null;
+    const dayTxt = passed != null ? `прошло ${passed} из ${WITHDRAW_DAYS} дн · ` : 'ещё не начат · ';
     const freeTxt = free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
     // Три состояния, чтобы не писать «€205 из €120» и не повторять «лимит» дважды.
     const budget =
@@ -238,16 +239,17 @@ export async function idleLines(): Promise<string[]> {
 
   const out = [`⏰ Простаивают (${rows.length}) — слот горит:`];
   for (const r of rows) {
-    // День цикла — общим хелпером: раньше здесь был round() по часам, и телефон
-    // показывался «день 9», пока блок «Телефоны сейчас» писал «день 8».
-    const day = cycleDayMsk(r.first_at);
-    const left = Math.max(0, WITHDRAW_DAYS - day);
+    // Прошедшие сутки — общим хелпером и в нумерации сводки: раньше здесь был
+    // round() по часам, и телефон показывался «день 9», пока соседний блок
+    // писал «день 8». До вывода остаётся WITHDRAW_DAYS − прошедшие.
+    const passed = cycleDayMsk(r.first_at) - 1;
+    const left = Math.max(0, WITHDRAW_DAYS - passed);
     // Телефон без боевых покупок на N-й день — это застрявший разогрев,
     // а не просто пауза: у него ещё и не начался заработок.
     const why =
       Number(r.battles) === 0
         ? `разогрев не продолжен (${buys(Number(r.cnt))}, боевых нет)`
-        : `день ${day}/${WITHDRAW_DAYS}, осталось ${left} дн`;
+        : `прошло ${passed} из ${WITHDRAW_DAYS} дн, до вывода ${left} дн`;
     out.push(`   …${r.imei}${r.label ? ` «${r.label}»` : ''}: ${r.idle_h} ч без закупки · ${why}`);
   }
   out.push(`   Пауза дольше ${IDLE_WARN_H} ч безопасна, но за 14 дней влезет 7 покупок вместо 12.`);

@@ -629,7 +629,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
 
   // Класс аппарата — из текстовой метки. Нужен для нижнего порога интервала:
   // Pro держат короткие паузы (26 попыток, 0 💀), базовые и компактные нет
-  // (3 💀 на 29). Метку не распознали → считаем НЕ-Pro, то есть осторожнее.
+  // (2 💀 на 28, обе короче 10 ч). Метку не распознали → считаем НЕ-Pro, то есть осторожнее.
   const phRow = await db
     .select({ label: phones.label })
     .from(phones)

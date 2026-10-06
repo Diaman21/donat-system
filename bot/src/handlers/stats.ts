@@ -6,7 +6,7 @@ import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
 import { mskTodayIso, daysBetweenIso, addDaysIso, ddmmOf } from '../format.js';
-import { WITHDRAW_DAYS, WARN_FROM_DAY } from './interval.js';
+import { WITHDRAW_DAYS, withdrawStage, type WithdrawStage } from './interval.js';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d
@@ -43,16 +43,17 @@ async function withdrawalAlerts(): Promise<string[]> {
   const alerts: { line: string; days: number }[] = [];
   for (const r of rows) {
     const days = daysBetweenIso(r.first_day, today);
-    if (days < WARN_FROM_DAY) continue;
+    // Стадию решает та же функция, что и подсказка после покупки.
+    const stage = withdrawStage(days);
+    if (stage === 'none') continue;
     const wl = ddmmOf(addDaysIso(r.first_day, WITHDRAW_DAYS));
     const label = r.label ? ` «${r.label}»` : '';
-    let line: string;
-    if (days >= WITHDRAW_DAYS)
-      line = `🔴🔴 …${r.imei}${label} — ${days}-й день, ПРОСРОЧЕНО! (вывод был ${wl})`;
-    else if (days === WITHDRAW_DAYS - 1)
-      line = `🔴 …${r.imei}${label} — 13-й день, ВЫВОД ЗАВТРА (${wl})`;
-    else line = `🟠 …${r.imei}${label} — ${days}-й день, вывод ${wl}`;
-    alerts.push({ line, days });
+    const LINE: Record<Exclude<WithdrawStage, 'none'>, string> = {
+      due: `🔴🔴 …${r.imei}${label} — ${days}-й день, ПРОСРОЧЕНО! (вывод был ${wl})`,
+      tomorrow: `🔴 …${r.imei}${label} — ${days}-й день, ВЫВОД ЗАВТРА (${wl})`,
+      soon: `🟠 …${r.imei}${label} — ${days}-й день, вывод ${wl}`,
+    };
+    alerts.push({ line: LINE[stage], days });
   }
   if (alerts.length === 0) return [];
   alerts.sort((a, b) => b.days - a.days);

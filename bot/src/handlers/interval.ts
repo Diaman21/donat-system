@@ -96,10 +96,29 @@ export const SUPPORT_REST_H = 24;
 
 /** Сколько дней разогрева по €2 (по одной покупке в сутки). */
 export const WARMUP_DAYS = 2;
-/** На какой день после первой покупки выводится бюджет. */
+/** Через сколько ПРОШЕДШИХ календарных суток после первой покупки выводится бюджет. */
 export const WITHDRAW_DAYS = 14;
-/** С какого дня предупреждаем о выводе (буфер). */
+/** С какого числа прошедших суток предупреждаем о выводе (буфер). */
 export const WARN_FROM_DAY = 12;
+
+export type WithdrawStage = 'none' | 'soon' | 'tomorrow' | 'due';
+
+/**
+ * Стадия вывода бюджета по числу ПРОШЕДШИХ суток (день первой покупки = 0).
+ *
+ * ⚠️ ОДНА функция для сводки (`stats.ts`) и для подсказки после покупки.
+ * До 06.10.2026 каждый считал сам: сводка — от прошедших суток, подсказка —
+ * от дня цикла (день 1 = день первой покупки), и подсказка звала выводить
+ * на сутки раньше. Сутки — это один слот ≈ €100, и прямое нарушение правила
+ * «отработать полные 14 дней». Привели к версии сводки: по ней шли рекордсмены
+ * (13.5–14.2 суток).
+ */
+export function withdrawStage(daysPassed: number): WithdrawStage {
+  if (daysPassed >= WITHDRAW_DAYS) return 'due';
+  if (daysPassed === WITHDRAW_DAYS - 1) return 'tomorrow';
+  if (daysPassed >= WARN_FROM_DAY) return 'soon';
+  return 'none';
+}
 
 /**
  * Дольше этого пауза перестаёт быть безопасной и начинает стоить денег.
@@ -209,7 +228,7 @@ export interface HintInput {
   /**
    * Pro-линейка (Pro / Pro Max / Max). У таких аппаратов нет нижнего пола
    * по интервалу: 26 коротких интервалов без единой смерти. У остальных —
-   * 3 смерти на 29 попыток, поэтому им называем час не раньше.
+   * 2 смерти на 28 попыток (обе короче 10 ч), поэтому им называем час не раньше.
    * По умолчанию false — осторожная сторона, если класс неизвестен.
    */
   isPro?: boolean;
@@ -290,8 +309,8 @@ export function nextPurchaseHint(input: HintInput): string[] {
 
   if (n > 0) {
     // Деньги позволяют — но у НЕ-Pro есть ещё и пол по времени: ниже 10 часов
-    // они умирают независимо от суммы (3 💀 на 29 попыток, все на базовых
-    // и компактных). У Pro такого пола нет: 26 попыток, ноль смертей.
+    // они умирают независимо от суммы (2 💀 на 15 попыток, обе на не-Pro:
+    // 12 mini и XR). У Pro такого пола нет: 26 попыток, ноль смертей.
     const floor = new Date(now.getTime() + MIN_GAP_WEAK_H * H);
     lines.push(
       isPro
@@ -300,7 +319,7 @@ export function nextPurchaseHint(input: HintInput): string[] {
           `(за 24 ч: €${spent} из €${DANGER_EUR})`,
     );
     if (!isPro) {
-      // ⚠️ Без чисел: «3 смерти на 29 попыток» будет дрейфовать с каждой
+      // ⚠️ Без чисел: «2 смерти на 15 попыток» будет дрейфовать с каждой
       // покупкой, как уже дрейфовало «8 из 13» (см. правило в CLAUDE.md).
       // Точные цифры считает /corridor.
       lines.push(
@@ -321,15 +340,20 @@ export function nextPurchaseHint(input: HintInput): string[] {
   }
   lines.push(`   🟢 без ограничений с ${when(free, now)} — тогда можно и крупную`);
 
-  // Конец цикла: бюджет выводится на 14-й день. Громкий блок есть в сводке
-  // группы, но здесь он попадает оператору прямо в момент работы с телефоном.
-  if (dayOfCycle != null && dayOfCycle >= WITHDRAW_DAYS) {
-    lines.push(`   🔴 День ${dayOfCycle} из ${WITHDRAW_DAYS} — ПОРА ВЫВОДИТЬ бюджет`);
-  } else if (dayOfCycle != null && dayOfCycle >= WARN_FROM_DAY) {
-    lines.push(
-      `   📅 День ${dayOfCycle} из ${WITHDRAW_DAYS} — вывод бюджета через ` +
-        `${WITHDRAW_DAYS - dayOfCycle} дн, слоты не тратить зря`,
-    );
+  // Конец цикла. Громкий блок есть в сводке группы, но здесь он попадает
+  // оператору прямо в момент работы с телефоном. Стадию решает withdrawStage —
+  // та же функция, что в сводке, поэтому разойтись они больше не могут.
+  if (dayOfCycle != null) {
+    const passed = dayOfCycle - 1; // день первой покупки = 0 прошедших суток
+    const left = WITHDRAW_DAYS - passed;
+    const WITHDRAW_LINE: Record<WithdrawStage, string | null> = {
+      none: null,
+      soon: `   📅 прошло ${passed} из ${WITHDRAW_DAYS} дн — вывод бюджета через ${left} дн, слоты не тратить зря`,
+      tomorrow: `   🔴 прошло ${passed} из ${WITHDRAW_DAYS} дн — вывод бюджета ЗАВТРА`,
+      due: `   🔴 прошло ${passed} из ${WITHDRAW_DAYS} дн — ПОРА ВЫВОДИТЬ бюджет`,
+    };
+    const line = WITHDRAW_LINE[withdrawStage(passed)];
+    if (line) lines.push(line);
   }
 
   if (orderStillOpen) {

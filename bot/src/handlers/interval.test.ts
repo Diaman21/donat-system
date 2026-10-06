@@ -13,6 +13,7 @@ import {
   WARMUP_DAYS,
   WITHDRAW_DAYS,
   WARN_FROM_DAY,
+  withdrawStage,
   type Charge,
 } from './interval.js';
 
@@ -139,7 +140,7 @@ test('после первой тридцатки на Pro: можно ещё д�
   assert.equal(lines[2], '   🟢 без ограничений с завтра 08:00 — тогда можно и крупную');
 });
 
-// На не-Pro деньги не защищают от короткого интервала (3 💀 на 29 попыток),
+// На не-Pro деньги не защищают от короткого интервала (2 💀 на 15 попыток короче 10 ч),
 // поэтому к разрешению добавляется час «не раньше».
 test('после первой тридцатки на не-Pro: называется час не раньше', () => {
   const now = at('2026-09-11T09:00:00.000Z'); // 12:00 МСК
@@ -332,39 +333,57 @@ test('без данных о фазе ведём себя как раньше (�
 
 // ---------- конец цикла ----------
 
-test('день 12: напоминание о скором выводе бюджета', () => {
-  const lines = nextPurchaseHint({
+// ⚠️ Нумерация: dayOfCycle — день цикла (день первой покупки = 1), а пороги
+// вывода считаются от ПРОШЕДШИХ суток (= dayOfCycle − 1), как в сводке.
+// До 06.10.2026 подсказка сравнивала сам dayOfCycle и звала выводить на сутки
+// раньше сводки — минус один слот.
+const hintAt = (dayOfCycle: number) =>
+  nextPurchaseHint({
     now: at('2026-09-11T09:00:00.000Z'),
     charges: [ch('2026-09-11T09:00:00.000Z', 100)],
     result: 'done',
-    dayOfCycle: 12,
+    dayOfCycle,
     hadBattle: true,
-  });
-  const text = lines.join('\n');
-  assert.ok(text.includes('День 12 из 14'), text);
+  }).join('\n');
+
+test('прошло 12 суток: напоминание о скором выводе бюджета', () => {
+  const text = hintAt(13);
+  assert.ok(text.includes('прошло 12 из 14 дн'), text);
   assert.ok(text.includes('через 2 дн'), text);
 });
 
-test('день 14: пора выводить', () => {
-  const lines = nextPurchaseHint({
-    now: at('2026-09-11T09:00:00.000Z'),
-    charges: [ch('2026-09-11T09:00:00.000Z', 100)],
-    result: 'done',
-    dayOfCycle: 14,
-    hadBattle: true,
-  });
-  assert.ok(lines.join('\n').includes('ПОРА ВЫВОДИТЬ'));
+test('прошло 13 суток: вывод завтра', () => {
+  assert.ok(hintAt(14).includes('ЗАВТРА'), hintAt(14));
+  assert.ok(!hintAt(14).includes('ПОРА ВЫВОДИТЬ'), 'на 13-х сутках ещё рано — это и была ошибка');
 });
 
-test('день 11: про вывод ещё молчим', () => {
-  const lines = nextPurchaseHint({
-    now: at('2026-09-11T09:00:00.000Z'),
-    charges: [ch('2026-09-11T09:00:00.000Z', 100)],
-    result: 'done',
-    dayOfCycle: 11,
-    hadBattle: true,
-  });
-  assert.ok(!lines.join('\n').includes('День 11'));
+test('прошло 14 суток: пора выводить', () => {
+  assert.ok(hintAt(15).includes('ПОРА ВЫВОДИТЬ'));
+});
+
+test('прошло 11 суток: про вывод ещё молчим', () => {
+  assert.ok(!hintAt(12).includes('вывод бюджета'), hintAt(12));
+});
+
+test('withdrawStage: лестница сводки 12 → 13 → 14+', () => {
+  assert.equal(withdrawStage(11), 'none');
+  assert.equal(withdrawStage(12), 'soon');
+  assert.equal(withdrawStage(13), 'tomorrow');
+  assert.equal(withdrawStage(14), 'due');
+  assert.equal(withdrawStage(20), 'due');
+});
+
+// Страж: подсказка после покупки говорит о выводе РОВНО тогда же, когда
+// сводка. Если кто-то снова начнёт сравнивать сам dayOfCycle — упадёт здесь.
+test('подсказка и сводка согласованы на каждом дне цикла', () => {
+  const MARK = { none: null, soon: 'через', tomorrow: 'ЗАВТРА', due: 'ПОРА ВЫВОДИТЬ' } as const;
+  for (let dayOfCycle = 3; dayOfCycle <= 20; dayOfCycle++) {
+    const stage = withdrawStage(dayOfCycle - 1); // так считает сводка
+    const text = hintAt(dayOfCycle);
+    const mark = MARK[stage];
+    if (mark === null) assert.ok(!text.includes('вывод бюджета'), `день ${dayOfCycle}: ${text}`);
+    else assert.ok(text.includes(mark), `день ${dayOfCycle} (${stage}): ${text}`);
+  }
 });
 
 test('пороги фазы согласованы между собой', () => {
