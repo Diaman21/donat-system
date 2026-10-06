@@ -9,6 +9,7 @@ import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate } from '../format.js';
 import { HIST_CB } from './history.js';
+import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
@@ -67,11 +68,13 @@ export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<vo
     const label = p.label ? `«${p.label}»` : '(без метки)';
     // У мёртвого дописываем причину и дату, остальные статусы берём из общей
     // таблицы — так добавление нового статуса не провалится молча в «умер».
+    const dr = asDeathReason(p.deathReason);
+    const diedTxt = p.diedAt ? fmtMskDate(p.diedAt) : '—';
     const state =
       p.status === 'dead'
-        ? p.deathReason === 'error'
-          ? `умер ${fmtMskDate(p.diedAt!)} (ошибка Apple)`
-          : `выведен ${p.diedAt ? fmtMskDate(p.diedAt) : '—'} (вручную)`
+        ? dr && BY_APPLE[dr]
+          ? `умер ${diedTxt} (${DEATH_SHORT[dr]})`
+          : `выведен ${diedTxt} (вручную)`
         : PHONE_STATE[p.status];
     lines.push(`${mark} ${label} — ${state}`);
     lines.push(
@@ -123,12 +126,8 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     .orderBy(desc(phones.diedAt));
   if (past.length > 0) {
     const p = past[0]!;
-    const reason =
-      p.deathReason === 'error'
-        ? 'ошибка Apple'
-        : p.deathReason === 'forced'
-          ? 'вынужденный вывод'
-          : '—';
+    const dr = asDeathReason(p.deathReason);
+    const reason = dr ? DEATH_SHORT[dr] : '—';
     const when = p.diedAt ? fmtMsk(p.diedAt) : '—';
     const lbl = p.label ? ` «${p.label}»` : '';
     const more = past.length > 1 ? ` Всего таких в истории: ${past.length}.` : '';

@@ -14,6 +14,7 @@ const RESULT_EMOJI: Record<PurchaseResultValue, string> = {
   done: '✅',
   support: '⚠️',
   long: '💀',
+  verify: '🔐',
 };
 
 const fmtTime = fmtMsk;

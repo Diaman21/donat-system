@@ -13,6 +13,7 @@ const EMOJI: Record<PurchaseResultValue, string> = {
   done: '✅',
   support: '⚠️',
   long: '💀',
+  verify: '🔐',
 };
 
 const MAX_ITEMS = 40;

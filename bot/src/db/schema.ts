@@ -25,7 +25,10 @@ import {
 // ---------- Enums ----------
 export const userRole = pgEnum('user_role', ['customer', 'operator', 'moderator']);
 export const phoneStatus = pgEnum('phone_status', ['active', 'dead', 'prepared']);
-export const purchaseResult = pgEnum('purchase_result', ['done', 'support', 'long']);
+// verify — «🔐 проверка данных» (миграция 0013, 06.10.2026): Apple требует
+// подтвердить аккаунт и не даёт покупать. Деньги не списаны, статус телефона
+// не меняется (триггер реагирует только на long).
+export const purchaseResult = pgEnum('purchase_result', ['done', 'support', 'long', 'verify']);
 // order_status удалён вместе с таблицей orders (миграция 0011).
 // У order_queue.status тип обычный text — отдельный enum ему не нужен.
 

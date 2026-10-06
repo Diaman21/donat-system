@@ -20,7 +20,7 @@ export const CB = {
   game: 'pur:game:', // + название игры ('' = без игры)
   amount: 'pur:amt:', // + число | 'custom'
   cnt: 'pur:cnt:', // + inc|dec|done|noop — счётчик кол-ва (ВК-мультизакуп)
-  result: 'pur:res:', // + done|support|long
+  result: 'pur:res:', // + done|support|verify|long
   note: 'pur:note', // добавить/изменить заметку (точное совпадение)
   net: 'pur:net:', // + mobile|wifi — выбор интернета = запись покупки
 } as const;
@@ -54,6 +54,17 @@ const RESULT_LABEL: Record<PurchaseResultValue, string> = {
   done: '✅ Выполнено',
   support: '⚠️ Ошибка (саппорт)',
   long: '💀 Телефон умер',
+  verify: '🔐 Проверка данных',
+};
+
+// Заканчивает ли результат цикл телефона. Должно совпадать с триггером
+// handle_long_result в базе (миграция 0014): long → dead/'error',
+// verify → dead/'verify'. Record — чтобы новый результат не проскочил молча.
+const ENDS_CYCLE: Record<PurchaseResultValue, boolean> = {
+  done: false,
+  support: false,
+  long: true,
+  verify: true,
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -390,6 +401,8 @@ async function askResult(
     .row()
     .text(RESULT_LABEL.support, `${CB.result}support`)
     .row()
+    .text(RESULT_LABEL.verify, `${CB.result}verify`)
+    .row()
     .text(RESULT_LABEL.long, `${CB.result}long`)
     .row()
     .text('❌ Отмена', CANCEL_CB);
@@ -692,8 +705,11 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // Подсказка «когда и на сколько можно следующую» — главный рычаг протокола.
   // Показываем ТОЛЬКО для танков: у ВК методика противоположная (серии покупок
   // подряд), там лимит 24 ч был бы неверен и превратился бы в спам.
-  // При 💀 не показываем вовсе — телефон мёртв, следующей покупки не будет.
-  if (flow.categoryCode === 'game_donate' && result !== 'long') {
+  // При 💀 и 🔐 не показываем вовсе — цикл закончен, следующей покупки не будет.
+  // ⚠️ Условие перечисляет, КОГДА показывать, а не когда нет: новый результат
+  // по умолчанию подсказку не получит. Раньше было «!== 'long'», и 🔐 verify
+  // молча получил бы совет «можно ещё 2 тридцатки» на выкаченном телефоне.
+  if (flow.categoryCode === 'game_donate' && (result === 'done' || result === 'support')) {
     // Считаем РЕАЛЬНО списанное за скользящие сутки: ✅ только. ⚠️ и 💀 денег
     // не тратят (платёж отклонён / waiver вместо списания) — см. CLAUDE.md.
     const charged = await db
@@ -736,7 +752,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
       ...nextPurchaseHint({
         now: new Date(),
         charges: charged.map((c) => ({ at: new Date(c.at), amount: Number(c.amount) })),
-        result: result === 'support' ? 'support' : 'done',
+        result,
         orderStillOpen: Boolean(orderId && orderStillOpen),
         dayOfCycle,
         hadBattle: Boolean(st?.had_battle),
@@ -745,8 +761,9 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     );
   }
 
-  // При 💀 — телефон умер (триггер). Показываем «надгробие».
-  if (result === 'long') {
+  // При 💀 и 🔐 — цикл закончен (триггер перевёл телефон в dead). «Надгробие».
+  const endsCycle = ENDS_CYCLE[result];
+  if (endsCycle) {
     const pm = await buildPostMortem(phoneId);
     if (pm) parts.push('', pm);
   }
@@ -758,5 +775,5 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
 
   // Телефон умер — короткий итог цикла в группу (после ответа оператору,
   // чтобы ошибка отправки в группу не задержала его сообщение).
-  if (result === 'long') await postCycleToGroup(ctx.api, phoneId);
+  if (endsCycle) await postCycleToGroup(ctx.api, phoneId);
 }

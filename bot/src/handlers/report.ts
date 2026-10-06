@@ -16,7 +16,7 @@ import { mskNow, mskTodayIso, addDaysIso, ddmmOf, hhmmMsk, isoOf } from '../form
 
 export const REP_CB = 'rep:';
 
-const EMOJI: Record<PurchaseResultValue, string> = { done: '✅', support: '⚠️', long: '💀' };
+const EMOJI: Record<PurchaseResultValue, string> = { done: '✅', support: '⚠️', long: '💀', verify: '🔐' };
 
 const MASK =
   '✏️ Введи дату или интервал в формате ДД.ММ\n\n' +
@@ -140,7 +140,8 @@ async function showDay(ctx: AppContext, day: string, edit: boolean) {
            coalesce(sum(p.amount),0)::float as eur,
            coalesce(sum(p.units),0)::int as votes,
            sum(case when p.result='support' then 1 else 0 end)::int as sup,
-           sum(case when p.result='long' then 1 else 0 end)::int as dead
+           sum(case when p.result='long' then 1 else 0 end)::int as dead,
+           sum(case when p.result='verify' then 1 else 0 end)::int as ver
     from purchases p join phones ph on ph.id = p.phone_id
     where (p.purchased_at at time zone 'Europe/Moscow')::date = ${day}::date
     group by ph.id, ph.imei_last4, ph.label
@@ -154,6 +155,7 @@ async function showDay(ctx: AppContext, day: string, edit: boolean) {
     votes: number;
     sup: number;
     dead: number;
+    ver: number;
   }[];
 
   if (rows.length === 0) {
@@ -167,7 +169,7 @@ async function showDay(ctx: AppContext, day: string, edit: boolean) {
   const lines = [`📅 ${ddmm(day)} — ${totalCnt} покупок · €${totalEur.toFixed(2)}`, ''];
   for (const r of rows) {
     const label = r.label ? ` «${r.label}»` : '';
-    const flags = `${r.dead ? ' 💀' : ''}${r.sup ? ` ⚠️${r.sup}` : ''}`;
+    const flags = `${r.dead ? ' 💀' : ''}${r.ver ? ' 🔐' : ''}${r.sup ? ` ⚠️${r.sup}` : ''}`;
     const votes = r.votes ? ` · ${r.votes}гол` : '';
     lines.push(`📱 …${r.imei}${label}: ${r.cnt} пок · €${r.eur.toFixed(2)}${votes}${flags}`);
   }

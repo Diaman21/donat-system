@@ -1,6 +1,6 @@
 # Схема БД — donat-system
 
-> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0012`.
+> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0014`.
 > Применены в **Neon** (serverless Postgres, EU Central, бесплатный план) **вручную**
 > через Neon SQL Editor. Claude DDL не применяет.
 > Зеркало схемы в коде — [`bot/src/db/schema.ts`](../bot/src/db/schema.ts) (только типы и запросы).
@@ -21,6 +21,8 @@
 | `0010_order_items.sql` | `order_queue.items` — состав заказа (сколько закупок нужно) |
 | `0011_drop_legacy_orders.sql` | **удалены** таблица `orders`, `purchases.order_id`, enum `order_status` |
 | `0012_bot_sessions_rls.sql` | RLS на `bot_sessions` (забыли в `0003`) — применена 12.09 |
+| `0013_purchase_result_verify.sql` | результат 🔐 `verify` («проверка данных») — применена 06.10 |
+| `0014_verify_ends_cycle.sql` | триггер: `verify` → телефон `dead`, `death_reason='verify'` — применена 06.10 |
 
 **Никогда не редактируем уже применённую миграцию** — только новый файл `000N_*.sql`.
 
@@ -60,7 +62,7 @@ erDiagram
         uuid operator_id FK
         timestamptz connected_at
         timestamptz died_at
-        text death_reason "error / forced"
+        text death_reason "error / verify / forced"
         uuid death_purchase_id FK "циклическая ссылка"
         text notes
     }
@@ -72,7 +74,7 @@ erDiagram
         uuid operator_id FK
         uuid category_id FK
         numeric amount "€"
-        enum result "done / support / long"
+        enum result "done / support / long / verify"
         text game "Massive / Furious / своя"
         text internet "mobile / wifi"
         int units "голоса ВК"
@@ -109,7 +111,7 @@ erDiagram
 |---|---|---|
 | `user_role` | `customer`, `operator`, `moderator` | `users.role` |
 | `phone_status` | `active`, `dead`, `prepared` | `phones.status` (`prepared` — резерв, не в лимите ≤3; миграция `0007`) |
-| `purchase_result` | `done` ✅, `support` ⚠️, `long` 💀 | `purchases.result` |
+| `purchase_result` | `done` ✅, `support` ⚠️, `long` 💀, `verify` 🔐 | `purchases.result` |
 
 > Enum `order_status` удалён вместе с таблицей `orders` (миграция `0011`).
 > У `order_queue.status` тип обычный `text` — отдельный enum ему не нужен.
@@ -149,13 +151,14 @@ erDiagram
 | `status` | `phone_status` | `active` / `dead` / `prepared` |
 | `connected_at` | `timestamptz` | когда введён в работу (для `prepared` — момент перевода) |
 | `died_at` | `timestamptz` | когда умер |
-| `death_reason` | `text` | `'error'` (ошибка Apple = достиг предела) / `'forced'` (вывод бюджета) |
+| `death_reason` | `text` | `'error'` (ошибка Apple = достиг предела) / `'verify'` (проверка данных Apple) / `'forced'` (вывод бюджета) |
 | `death_purchase_id` | `uuid` → `purchases.id` | какая покупка убила (для post-mortem) |
 
 **Бизнес-правила (триггеры):**
 - ≤3 активных одновременно — `enforce_max_active_phones` (`prepared` не в лимите)
 - IMEI уникален только среди активных — частичный unique index `phones_active_imei_unique`
 - 💀 `long` → статус `dead`, `died_at`, `death_purchase_id`, `death_reason='error'` — `handle_long_result`
+- 🔐 `verify` → то же самое, но `death_reason='verify'` (миграция `0014`, та же функция)
 
 > ⚠️ **`forced` исключать из расчёта порогов** — это искусственные смерти (возврат бюджета,
 > блокировка), они не отражают предел телефона.
@@ -171,7 +174,7 @@ erDiagram
 | `operator_id` | `uuid` → `users.id` | кто вбил |
 | `category_id` | `uuid` → `purchase_categories.id` | 🎮 танки / 🗳 ВК |
 | `amount` | `numeric(12,2)` CHECK > 0 | **сумма в €** |
-| `result` | `purchase_result` | ✅ `done` / ⚠️ `support` / 💀 `long` |
+| `result` | `purchase_result` | ✅ `done` / ⚠️ `support` / 💀 `long` / 🔐 `verify` |
 | `game` | `text` nullable | Massive / Furious / своя (миграция `0002`) |
 | `internet` | `text` nullable | `'mobile'` / `'wifi'` (миграция `0005`) |
 | `units` | `integer` nullable | голоса ВК (миграция `0006`) |
@@ -301,7 +304,7 @@ select ph.imei_last4, (p.purchased_at at time zone 'Europe/Moscow')::date as d,
 
 > ⚠️ **Почему JSON, а не только CSV.** В CSV телефон записан лишь 4 цифрами IMEI —
 > они повторяются у разных аппаратов, и в нём НЕТ метки телефона (модели),
-> `death_reason` (error/forced), дат жизни и `warmup_config`. Без этого анализ
+> `death_reason` (error/verify/forced), дат жизни и `warmup_config`. Без этого анализ
 > «зелёного коридора» после восстановления не собрать. JSON содержит `phone_id` —
 > точную привязку покупок к аппаратам.
 
@@ -314,7 +317,7 @@ select ph.imei_last4, (p.purchased_at at time zone 'Europe/Moscow')::date as d,
 
 ### Как восстановить из JSON
 
-1. Создать пустую базу и применить миграции `0001`…`0012` по порядку.
+1. Создать пустую базу и применить миграции `0001`…`0014` по порядку.
 2. Взять последний `backup-full-*.json` из группы.
 3. Вставить строки **в порядке ключа `meta.tables`** — он учитывает зависимости
    внешних ключей: `users` → `purchase_categories` → `phones` → `purchases` → `order_queue`.

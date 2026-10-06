@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases, purchaseCategories, users } from '../db/schema.js';
+import { phones, purchases, purchaseCategories, users, type PurchaseResultValue } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
@@ -111,16 +111,15 @@ export async function renderStats(
 
   let totalCnt = 0;
   let totalSpent = 0;
-  let done = 0;
-  let support = 0;
-  let long = 0;
+  // Record, а не цепочка if/else: новый результат (🔐 verify, 06.10.2026)
+  // иначе молча выпал бы из строки «✅ · ⚠️ · 💀».
+  const byRes: Record<PurchaseResultValue, number> = { done: 0, support: 0, long: 0, verify: 0 };
   for (const r of byResult) {
     totalCnt += r.cnt;
     totalSpent += Number(r.total);
-    if (r.result === 'done') done = r.cnt;
-    else if (r.result === 'support') support = r.cnt;
-    else if (r.result === 'long') long = r.cnt;
+    byRes[r.result] = r.cnt;
   }
+  const { done, support, long, verify } = byRes;
 
   // Всего голосов ВК куплено (с учётом периода)
   const votesQuery = db
@@ -143,6 +142,9 @@ export async function renderStats(
   const deadError = allPhones.filter((p) => p.status === 'dead' && p.deathReason === 'error').length;
   const deadForced = allPhones.filter(
     (p) => p.status === 'dead' && p.deathReason === 'forced',
+  ).length;
+  const deadVerify = allPhones.filter(
+    (p) => p.status === 'dead' && p.deathReason === 'verify',
   ).length;
   const imeiById = new Map(allPhones.map((p) => [p.id, p.imei]));
   // Для «возраста до 💀» берём только естественные смерти (ошибка Apple),
@@ -261,10 +263,10 @@ export async function renderStats(
     `📊 Статистика (${PERIOD_TITLE[period]})`,
     '',
     `💵 Потрачено: ${money(totalSpent)}`,
-    `🛒 Покупок: ${totalCnt}  (✅ ${done} · ⚠️ ${support} · 💀 ${long})`,
+    `🛒 Покупок: ${totalCnt}  (✅ ${done} · ⚠️ ${support} · 💀 ${long}${verify ? ` · 🔐 ${verify}` : ''})`,
     totalVotes > 0 ? `🗳 Голосов ВК куплено: ${totalVotes}` : null,
     '',
-    `📱 Телефоны (сейчас): ${active} активных · ${dead} умерло (❌ ${deadError} ошибка · 🔄 ${deadForced} вынужд.)`,
+    `📱 Телефоны (сейчас): ${active} активных · ${dead} умерло (❌ ${deadError} ошибка${deadVerify ? ` · 🔐 ${deadVerify} проверка` : ''} · 🔄 ${deadForced} вынужд.)`,
     `🪦 Средний возраст до 💀: ${avgDeathLine}`,
     `🔥 Самая длинная серия: ${longestLine}`,
     '',

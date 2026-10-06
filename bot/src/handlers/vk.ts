@@ -20,6 +20,7 @@ interface DayRow {
   cnt: number;
   sup: number;
   dead: number;
+  ver: number;
 }
 
 export async function showVkReport(ctx: AppContext): Promise<void> {
@@ -31,7 +32,8 @@ export async function showVkReport(ctx: AppContext): Promise<void> {
            coalesce(sum(p.units),0)::int as votes,
            count(*)::int as cnt,
            sum(case when p.result='support' then 1 else 0 end)::int as sup,
-           sum(case when p.result='long' then 1 else 0 end)::int as dead
+           sum(case when p.result='long' then 1 else 0 end)::int as dead,
+           sum(case when p.result='verify' then 1 else 0 end)::int as ver
     from purchases p
     join phones ph on ph.id = p.phone_id
     join purchase_categories c on c.id = p.category_id
@@ -78,7 +80,7 @@ export async function showVkReport(ctx: AppContext): Promise<void> {
     if (omitted > 0) out.push(`   …(ранее ещё ${omitted} дней)`);
 
     for (const d of shown) {
-      const flag = d.dead ? ' 💀' : d.sup ? ' ⚠️' : '';
+      const flag = d.dead ? ' 💀' : d.ver ? ' 🔐' : d.sup ? ' ⚠️' : '';
       out.push(`   ${d.d}: ${d.votes} гол · ${d.cnt} пок${flag}`);
     }
     out.push('');

@@ -38,7 +38,7 @@ export interface Anomaly {
 /** Факты о только что записанной покупке — всё, что нужно для классификации. */
 export interface PurchaseFacts {
   amount: number;
-  result: 'done' | 'support' | 'long';
+  result: 'done' | 'support' | 'long' | 'verify';
   /** Часов с предыдущей покупки на этом телефоне. null — первая. */
   gapH: number | null;
   /** Списано (✅) за 24 ч ДО этой покупки, без неё самой. */

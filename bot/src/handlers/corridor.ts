@@ -6,6 +6,17 @@ import { DANGER_EUR, CORRIDOR_MIN_H, IDLE_WARN_H, WITHDRAW_DAYS, smallsLeft } fr
 import { assessZone, type ZoneVerdict } from './anomaly.js';
 import { parsePhoneModel } from './phone-model.js';
 import { hhmmMsk, cycleDayMsk } from '../format.js';
+import type { PurchaseResultValue } from '../db/schema.js';
+import { asDeathReason } from './death.js';
+
+// Значок результата. Record, а не тернарник «long ? 💀 : support ? ⚠️ : ✅» —
+// тот показал бы новый результат 🔐 verify как успешную покупку.
+const RES_MARK: Record<PurchaseResultValue, string> = {
+  done: '✅',
+  support: '⚠️',
+  long: '💀',
+  verify: '🔐',
+};
 
 // «/corridor» — отчёт о «зелёном коридоре», пересчитанный ИЗ БАЗЫ.
 //
@@ -169,7 +180,7 @@ export async function violationsLines(hours = 24): Promise<string[]> {
   if (rows.length === 0) return [];
   const out = [`⚠️ Протокол нарушен (${rows.length}) — опасная клетка расклада:`];
   for (const r of rows) {
-    const mark = r.res === 'long' ? '💀' : r.res === 'support' ? '⚠️' : '✅';
+    const mark = RES_MARK[r.res as PurchaseResultValue] ?? '❔';
     out.push(
       `   ${mark} ${r.at} …${r.imei}${r.label ? ` «${r.label}»` : ''}: ` +
         `€${Number(r.spent)} + €${Number(r.amt)} = €${Number(r.spent) + Number(r.amt)} ` +
@@ -344,13 +355,15 @@ export async function modelLines(): Promise<string[]> {
   }[];
   if (rows.length === 0) return [];
 
-  const agg = new Map<string, { n: number; eur: number; err: number }>();
+  const agg = new Map<string, { n: number; eur: number; err: number; ver: number }>();
   for (const r of rows) {
     const key = parsePhoneModel(r.label).name ?? '(модель не распознана)';
-    const a = agg.get(key) ?? { n: 0, eur: 0, err: 0 };
+    const a = agg.get(key) ?? { n: 0, eur: 0, err: 0, ver: 0 };
     a.n++;
     a.eur += Number(r.eur);
-    if (r.dr === 'error') a.err++;
+    const dr = asDeathReason(r.dr);
+    if (dr === 'error') a.err++;
+    if (dr === 'verify') a.ver++;
     agg.set(key, a);
   }
 
@@ -358,7 +371,8 @@ export async function modelLines(): Promise<string[]> {
   const sorted = [...agg.entries()].sort((a, b) => b[1].eur / b[1].n - a[1].eur / a[1].n);
   for (const [m, a] of sorted.slice(0, 10)) {
     out.push(
-      `   ${m}: ${a.n} шт · средний €${Math.round(a.eur / a.n)}` + (a.err ? ` · 💀 ${a.err}` : ''),
+      `   ${m}: ${a.n} шт · средний €${Math.round(a.eur / a.n)}` + (a.err ? ` · 💀 ${a.err}` : '') +
+        (a.ver ? ` · 🔐 ${a.ver}` : ''),
     );
   }
   out.push('   ⚠️ По 1–3 телефона на модель — это наблюдения, а не закон.');
@@ -393,8 +407,16 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
     `📊 Интервал × сумма за 24 ч (танки, ${att.length} попыток)`,
     row(`⏱ интервал < ${CORRIDOR_MIN_H} ч`, true),
     row(`⏱ интервал ≥ ${CORRIDOR_MIN_H} ч`, false),
-    '',
   );
+  // 🔐 «проверка данных» (с 06.10.2026) в расклад НАМЕРЕННО не входит: это
+  // другое событие, не waiver 💀, и смешивать их — портить обе картины.
+  // Но и терять из вида нельзя, поэтому — отдельной строкой. Разбор того,
+  // что ей предшествует, имеет смысл с 3–5 случаев, не раньше.
+  const ver = all.filter((a) => a.res === 'verify').length;
+  if (ver > 0) {
+    lines.push(`   🔐 проверка данных: ${ver} — в расклад не входит, учитывается отдельно`);
+  }
+  lines.push('');
 
   // ---------- 2. Перебор порогов ----------
   lines.push('💶 Где граница по деньгам (перебор порогов)');

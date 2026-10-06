@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { asDeathReason, DEATH_TAG } from './death.js';
 import { mskIsoOfDate, addDaysIso, ddmmOf, isMondayMsk } from '../format.js';
 
 // Недельный итог — добавляется в ежедневную сводку ПО ПОНЕДЕЛЬНИКАМ.
@@ -37,6 +38,7 @@ interface WeekRow {
   slots_used: number;
   deaths: number;
   warns: number;
+  verifies: number;
 }
 
 // Итоги за окно [from, to) — границы в календарных сутках МСК.
@@ -59,7 +61,8 @@ async function weekTotals(fromIso: string, toIso: string): Promise<WeekRow> {
       count(*) filter (where result='done' and amount < 30)::int warm,
       count(distinct (phone_id, d)) filter (where result='done')::int slots_used,
       count(*) filter (where result='long')::int deaths,
-      count(*) filter (where result='support')::int warns
+      count(*) filter (where result='support')::int warns,
+      count(*) filter (where result='verify')::int verifies
     from p`)) as unknown as WeekRow[];
   return r[0]!;
 }
@@ -158,14 +161,15 @@ export async function weeklyLines(now: Date = new Date()): Promise<string[]> {
     );
   }
 
-  if (cur.deaths > 0 || cur.warns > 0) {
-    out.push(`   ⚠️ За неделю: 💀 ${cur.deaths} · ⚠️ ${cur.warns}`);
+  if (cur.deaths > 0 || cur.warns > 0 || cur.verifies > 0) {
+    out.push(`   ⚠️ За неделю: 💀 ${cur.deaths} · ⚠️ ${cur.warns}` + (cur.verifies ? ` · 🔐 ${cur.verifies}` : ''));
   }
 
   if (done.length > 0) {
     out.push(`   🏁 Завершили цикл: ${done.length}`);
     for (const f of done) {
-      const why = f.dr === 'error' ? '❌ ошибка' : '🔄 вывод';
+      const dr = asDeathReason(f.dr);
+      const why = dr ? DEATH_TAG[dr] : '🔄 вывод';
       out.push(
         `      …${f.imei}${f.label ? ` «${f.label}»` : ''}: €${f.eur.toFixed(0)}` +
           (f.days != null ? ` за ${f.days} дн` : '') +

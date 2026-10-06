@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { orderQueue, purchases, users } from '../db/schema.js';
+import { orderQueue, purchases, users, type PurchaseResultValue } from '../db/schema.js';
 import {
   parseOrder,
   describePlan,
@@ -68,12 +68,12 @@ export async function orderContext(orderId: string): Promise<{
 
 // Итог по заказу после закупки.
 // Закрываем ТОЛЬКО когда сделаны ВСЕ позиции и покупка успешна.
-// При ⚠️/💀 счётчик не растёт: покупка была, но позиция не закрыта —
+// При ⚠️/💀/🔐 счётчик не растёт: покупка была, но позиция не закрыта —
 // саппорт повторяем завтра, смерть доделываем на другом телефоне.
 export async function closeOrderIfDone(
   ctx: AppContext,
   orderId: string,
-  result: 'done' | 'support' | 'long',
+  result: PurchaseResultValue,
 ): Promise<{ text: string; stillOpen: boolean; num: number | null }> {
   const user = ctx.dbUser;
   const rows = await db

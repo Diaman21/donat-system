@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
 import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
+import { asDeathReason, DEATH_FULL } from './death.js';
 
 function fmtSpan(ms: number): string {
   const totalHours = Math.floor(ms / 3_600_000);
@@ -14,8 +15,10 @@ function fmtSpan(ms: number): string {
   return `${Math.max(1, Math.floor(ms / 60_000))}м`;
 }
 
-const emoji = (r: PurchaseResultValue): string =>
-  r === 'long' ? '💀' : r === 'support' ? '⚠️' : '✅';
+// Record, а не тернарник: тернарник «long ? 💀 : support ? ⚠️ : ✅» молча
+// показал бы новый результат 🔐 verify как успешную покупку.
+const EMOJI: Record<PurchaseResultValue, string> = { done: '✅', support: '⚠️', long: '💀', verify: '🔐' };
+const emoji = (r: PurchaseResultValue): string => EMOJI[r];
 
 // сколько последних покупок показывать в таймлайне «надгробия»
 const TIMELINE = 12;
@@ -73,12 +76,9 @@ export async function buildCycleSummary(phoneId: string): Promise<string> {
   }
 
   const label = ph.label ? ` «${ph.label}»` : '';
-  const reason =
-    ph.deathReason === 'error'
-      ? '❌ ошибка Apple (достиг предела)'
-      : ph.deathReason === 'forced'
-        ? '🔄 плановый вывод бюджета'
-        : '—';
+  const dr = asDeathReason(ph.deathReason);
+  // В итоге цикла ручной вывод — это плановое завершение, отсюда своя подпись.
+  const reason = dr === 'forced' ? '🔄 плановый вывод бюджета' : dr ? DEATH_FULL[dr] : '—';
 
   return [
     `🏁 Цикл завершён: …${ph.imeiLast4}${label}`,
@@ -160,12 +160,8 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   });
 
   const label = ph.label ? ` «${ph.label}»` : '';
-  const reasonLine =
-    ph.deathReason === 'error'
-      ? 'Причина: ❌ ошибка Apple (достиг предела)'
-      : ph.deathReason === 'forced'
-        ? 'Причина: 🔄 вынужденный вывод (возврат бюджета)'
-        : '';
+  const pmReason = asDeathReason(ph.deathReason);
+  const reasonLine = pmReason ? `Причина: ${DEATH_FULL[pmReason]}` : '';
   return [
     `🪦 Итог по телефону …${ph.imeiLast4}${label}`,
     `Подключён: ${fmtMsk(ph.connectedAt)}`,
