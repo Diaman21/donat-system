@@ -10,6 +10,7 @@ import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint } from './interval.js';
 import { classifyPurchase, anomalyLines } from './anomaly.js';
+import { parsePhoneModel, modelGroup } from './phone-model.js';
 import { daysBetweenIso, mskTodayIso } from '../format.js';
 
 // Префиксы callback-данных
@@ -626,6 +627,16 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     had_battle: boolean;
   }[];
 
+  // Класс аппарата — из текстовой метки. Нужен для нижнего порога интервала:
+  // Pro держат короткие паузы (26 попыток, 0 💀), базовые и компактные нет
+  // (3 💀 на 29). Метку не распознали → считаем НЕ-Pro, то есть осторожнее.
+  const phRow = await db
+    .select({ label: phones.label })
+    .from(phones)
+    .where(eq(phones.id, flow.phoneId))
+    .limit(1);
+  const isPro = modelGroup(parsePhoneModel(phRow[0]?.label)) === 'pro';
+
   const rows = Array.from({ length: flow.qty }, (_, i) => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
@@ -714,6 +725,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
       dayOfCycle,
       hadBattleBefore: Boolean(st?.had_battle),
       internet,
+      isPro,
       isTank: true,
     });
     const aLines = anomalyLines(anomalies);
@@ -728,6 +740,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
         orderStillOpen: Boolean(orderId && orderStillOpen),
         dayOfCycle,
         hadBattle: Boolean(st?.had_battle),
+        isPro,
       }),
     );
   }

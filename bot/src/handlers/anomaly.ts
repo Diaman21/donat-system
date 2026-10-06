@@ -1,4 +1,10 @@
-import { DANGER_EUR, CORRIDOR_MIN_H, WARMUP_DAYS, WITHDRAW_DAYS } from './interval.js';
+import {
+  DANGER_EUR,
+  CORRIDOR_MIN_H,
+  MIN_GAP_WEAK_H,
+  WARMUP_DAYS,
+  WITHDRAW_DAYS,
+} from './interval.js';
 
 // Аномалии: заметить отклонение и ИЗВЛЕЧЬ ИЗ НЕГО ЗНАНИЕ.
 //
@@ -42,6 +48,8 @@ export interface PurchaseFacts {
   /** Были ли боевые покупки (≥€30) ДО этой. */
   hadBattleBefore: boolean;
   internet: 'mobile' | 'wifi' | null;
+  /** Pro-линейка: у неё нет нижнего пола по интервалу (26 попыток, 0 💀). */
+  isPro?: boolean;
   /** Танки (game_donate). У ВК методика другая — там эти правила не применимы. */
   isTank: boolean;
 }
@@ -72,8 +80,19 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
         `интервал ${gap} ч при сумме €${total} за 24 ч — это опасная клетка расклада, ` +
         `в ней исторически гибнет больше половины телефонов (точнее — /corridor)`,
     });
+  } else if (short && f.gapH != null && f.gapH < MIN_GAP_WEAK_H && !f.isPro) {
+    // 2a. Совсем короткий интервал на НЕ-Pro — это уже не наблюдение.
+    // Все три смерти в «безопасной» по деньгам клетке случились именно здесь
+    // (…1817 3.1 ч, …0166 6.8 ч, …9445 3.2 ч) и все на базовых/компактных.
+    out.push({
+      severity: 'danger',
+      text:
+        `интервал ${gap} ч на не-Pro аппарате — здесь деньги не защищают: ` +
+        `все смерти в «безопасной» по сумме зоне были короче ${MIN_GAP_WEAK_H} ч`,
+    });
   } else if (short) {
-    // 2. Короткий интервал, но денег немного — та самая неизученная зона.
+    // 2b. Короткий интервал при малых деньгах — та самая неизученная зона.
+    // На Pro она пока чистая (26 попыток, 0 смертей), поэтому наблюдение.
     out.push({
       severity: 'observation',
       text: `интервал ${gap} ч (норма ≥ ${CORRIDOR_MIN_H} ч), сумма за 24 ч €${total}`,

@@ -171,3 +171,43 @@ test('assessZone: оценка риска монотонно падает с р�
     prev = z.upperRiskPct!;
   }
 });
+
+// ---------- нижний порог интервала: Pro против остальных (06.10.2026) ----------
+//
+// Смерть …9445 «Xr белый» 28.09 показала, что деньги не защищают от короткого
+// интервала: €30 + €30 = €60 за сутки (вдвое ниже потолка) через 3.2 ч → 💀.
+// Все три смерти в «безопасной» по сумме клетке — на не-Pro аппаратах
+// (12 mini, 12, XR), а Pro выдержали 26 коротких интервалов без потерь.
+
+test('не-Pro: короткий интервал при малых деньгах — это danger, а не наблюдение', () => {
+  // Реальный случай …9445: €30 поверх €30 через 3.2 ч на iPhone XR.
+  const a = classifyPurchase(f({ amount: 30, spent24: 30, gapH: 3.2, isPro: false }));
+  assert.equal(a.length, 1);
+  assert.equal(a[0]?.severity, 'danger');
+  assert.ok(a[0]?.text.includes('не-Pro'));
+  assert.equal(a[0]?.learn, undefined, 'у опасного нет «полезного знания»');
+});
+
+test('Pro: тот же интервал остаётся наблюдением', () => {
+  const a = classifyPurchase(f({ amount: 30, spent24: 30, gapH: 3.2, isPro: true }));
+  assert.equal(a.length, 1);
+  assert.equal(a[0]?.severity, 'observation');
+  assert.ok(a[0]?.learn?.includes('сдвинуть границу'));
+});
+
+test('граница пола: 10 ч — уже наблюдение, 9.9 ч — ещё danger', () => {
+  assert.equal(classifyPurchase(f({ gapH: 10, spent24: 30, isPro: false }))[0]?.severity, 'observation');
+  assert.equal(classifyPurchase(f({ gapH: 9.9, spent24: 30, isPro: false }))[0]?.severity, 'danger');
+});
+
+test('опасная клетка по деньгам важнее пола по времени', () => {
+  // €100 поверх €105 через 3 ч — это клетка «сумма ≥€120», она и называется.
+  const a = classifyPurchase(f({ amount: 100, spent24: 105, gapH: 3, isPro: false }));
+  assert.equal(a.filter((x) => x.severity === 'danger').length, 1, 'одно сообщение, не два');
+  assert.ok(a[0]?.text.includes('опасная клетка'));
+});
+
+test('по умолчанию аппарат считается НЕ-Pro (осторожная сторона)', () => {
+  const a = classifyPurchase({ ...base, amount: 30, spent24: 30, gapH: 3.2 });
+  assert.equal(a[0]?.severity, 'danger');
+});
