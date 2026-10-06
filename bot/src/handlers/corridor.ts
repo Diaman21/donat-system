@@ -5,7 +5,7 @@ import { requireOperator } from './start.js';
 import { DANGER_EUR, CORRIDOR_MIN_H, IDLE_WARN_H, WITHDRAW_DAYS, smallsLeft } from './interval.js';
 import { assessZone, type ZoneVerdict } from './anomaly.js';
 import { parsePhoneModel } from './phone-model.js';
-import { hhmmMsk } from '../format.js';
+import { hhmmMsk, cycleDayMsk } from '../format.js';
 
 // «/corridor» — отчёт о «зелёном коридоре», пересчитанный ИЗ БАЗЫ.
 //
@@ -110,9 +110,8 @@ export async function phonesNowLines(): Promise<string[]> {
       ? new Date(new Date(p.last_at).getTime() + CORRIDOR_MIN_H * 3600 * 1000)
       : null;
     // День цикла: вывод бюджета на 14-й день после ПЕРВОЙ покупки.
-    const day = p.first_at
-      ? Math.floor((now.getTime() - new Date(p.first_at).getTime()) / 86_400_000) + 1
-      : null;
+    // Считает общий хелпер (`format.ts`) — здесь была своя формула по часам.
+    const day = p.first_at ? cycleDayMsk(p.first_at, now) : null;
     const dayTxt = day ? `день ${day}/14 · ` : 'ещё не начат · ';
     const freeTxt = free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
     // Три состояния, чтобы не писать «€205 из €120» и не повторять «лимит» дважды.
@@ -213,14 +212,14 @@ export async function violationsLines(hours = 24): Promise<string[]> {
  * что требует действия, а не перечислять всё подряд.
  *
  * ⚠️ Слот нельзя накопить. У телефона 14 дней жизни и один слот в сутки:
- * день без закупки сгорает насовсем. За три недели так сгорело 39 слотов
- * из 78 — больше, чем принесли все тридцатки за тот же период.
+ * день без закупки сгорает насовсем. Замер 06.10.2026: за три недели
+ * использовано 33 суточных слота из 65 — половина окна ушла впустую.
  */
 export async function idleLines(): Promise<string[]> {
   const rows = (await db.execute(sql`
     select ph.imei_last4 imei, ph.label,
       round(extract(epoch from (now() - max(p.purchased_at)))/3600.0)::int idle_h,
-      round(extract(epoch from (now() - min(p.purchased_at)))/86400.0)::int day_n,
+      min(p.purchased_at) first_at,
       count(*) filter (where p.result = 'done' and p.amount >= 30)::int battles,
       count(*)::int cnt
     from phones ph join purchases p on p.phone_id = ph.id
@@ -231,7 +230,7 @@ export async function idleLines(): Promise<string[]> {
     imei: string;
     label: string | null;
     idle_h: number;
-    day_n: number;
+    first_at: string;
     battles: number;
     cnt: number;
   }[];
@@ -239,7 +238,9 @@ export async function idleLines(): Promise<string[]> {
 
   const out = [`⏰ Простаивают (${rows.length}) — слот горит:`];
   for (const r of rows) {
-    const day = Number(r.day_n) + 1;
+    // День цикла — общим хелпером: раньше здесь был round() по часам, и телефон
+    // показывался «день 9», пока блок «Телефоны сейчас» писал «день 8».
+    const day = cycleDayMsk(r.first_at);
     const left = Math.max(0, WITHDRAW_DAYS - day);
     // Телефон без боевых покупок на N-й день — это застрявший разогрев,
     // а не просто пауза: у него ещё и не начался заработок.

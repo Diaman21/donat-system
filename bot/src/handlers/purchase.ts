@@ -11,7 +11,7 @@ import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint } from './interval.js';
 import { classifyPurchase, anomalyLines } from './anomaly.js';
 import { parsePhoneModel, modelGroup } from './phone-model.js';
-import { daysBetweenIso, mskTodayIso } from '../format.js';
+import { cycleDayMsk } from '../format.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -713,7 +713,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     // проходят, но по протоколу там ещё разогрев.
     const st = before[0];
     const firstDay = st?.first_day ?? null;
-    const dayOfCycle = firstDay ? daysBetweenIso(firstDay, mskTodayIso()) + 1 : null;
+    const dayOfCycle = firstDay ? cycleDayMsk(firstDay) : null;
 
     // Разбор отклонений — по состоянию ДО этой покупки. Сначала говорим,
     // что произошло, потом — что делать дальше.

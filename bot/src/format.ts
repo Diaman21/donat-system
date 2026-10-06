@@ -91,6 +91,22 @@ export function daysBetweenIso(from: string, to: string): number {
   return Math.floor((isoToUtcMs(to) - isoToUtcMs(from)) / 86400000);
 }
 
+/**
+ * Номер дня цикла телефона по календарю МСК: **день 1 — день первой покупки.**
+ *
+ * ⚠️ ЕДИНСТВЕННОЕ место, где это считается. Формула была скопирована в три файла
+ * в трёх разных видах — календарь МСК (`purchase.ts`), `floor` по часам
+ * (`phonesNowLines`) и `round` по часам (`idleLines`), — и 06.10.2026 один и тот
+ * же телефон …9183 в ОДНОЙ сводке показался сразу как «день 9/14» и «день 8/14».
+ * Копии в новых файлах не заводить, как и с остальной арифметикой МСК.
+ *
+ * ⚠️ Считаем по КАЛЕНДАРЮ, а не по часам: оператор живёт датами («сегодня уже
+ * делал?»), и окно жизни телефона тоже считается днями, а не часами.
+ */
+export function cycleDayMsk(firstAt: Date | string | number, at: Date = new Date()): number {
+  return daysBetweenIso(mskIsoOfDate(firstAt), mskIsoOfDate(at)) + 1;
+}
+
 /** «2026-09-12» → «12.09» (для заголовков и кнопок). */
 export function ddmmOf(iso: string): string {
   const p = iso.split('-');

@@ -13,6 +13,7 @@ import {
   fmtMsk,
   fmtMskDate,
   isMondayMsk,
+  cycleDayMsk,
 } from './format.js';
 
 // Тесты на календарь МСК.
@@ -186,4 +187,42 @@ test('isMondayMsk: ровно один понедельник на 7 дней п
   let n = 0;
   for (let i = 0; i < 7; i++) if (isMondayMsk(new Date(Date.UTC(2026, 8, 7 + i, 9)))) n++;
   assert.equal(n, 1);
+});
+
+// ---------- день цикла телефона ----------
+//
+// Эти тесты стоят на страже согласованности, а не арифметики. 06.10.2026 один
+// телефон в ОДНОЙ сводке показался как «день 9/14» и «день 8/14» одновременно:
+// формула была скопирована в три файла и считалась по-разному (календарь МСК,
+// floor по часам, round по часам). Теперь считает одна функция.
+
+test('cycleDayMsk: день первой покупки — это день 1, а не 0', () => {
+  const first = new Date('2026-09-28T10:00:00.000Z');
+  assert.equal(cycleDayMsk(first, first), 1);
+  assert.equal(cycleDayMsk(first, new Date('2026-09-28T20:00:00.000Z')), 1);
+});
+
+test('cycleDayMsk: считает КАЛЕНДАРНЫЕ сутки, а не часы', () => {
+  // Покупка в 23:00 МСК, смотрим в 01:00 МСК следующего дня: часов прошло два,
+  // а день уже второй. Старая формула по часам дала бы «день 1».
+  const first = new Date('2026-09-28T20:00:00.000Z'); // 23:00 МСК 28.09
+  assert.equal(cycleDayMsk(first, new Date('2026-09-28T22:00:00.000Z')), 2); // 01:00 МСК 29.09
+});
+
+test('cycleDayMsk: реальный случай …9183 (первая покупка 28.09, сегодня 06.10)', () => {
+  const day = cycleDayMsk(new Date('2026-09-28T12:00:00.000Z'), new Date('2026-10-06T09:00:00.000Z'));
+  assert.equal(day, 9, 'ровно одно значение, без расхождения между блоками');
+});
+
+test('cycleDayMsk: ISO-дата и timestamp дают одно и то же', () => {
+  const at = new Date('2026-10-06T09:00:00.000Z');
+  assert.equal(cycleDayMsk('2026-09-28', at), cycleDayMsk(new Date('2026-09-28T12:00:00.000Z'), at));
+});
+
+test('cycleDayMsk: растёт ровно на 1 за сутки, 14 дней подряд', () => {
+  const first = new Date('2026-09-28T12:00:00.000Z');
+  for (let i = 0; i < 14; i++) {
+    const at = new Date(first.getTime() + i * 86_400_000);
+    assert.equal(cycleDayMsk(first, at), i + 1, `сутки ${i}`);
+  }
 });
