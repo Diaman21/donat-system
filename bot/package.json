@@ -9,6 +9,7 @@
     "start": "tsx src/index.ts",
     "db:check": "tsx src/db/check.ts",
     "setup-webhook": "tsx src/setup-webhook.ts",
+    "restore-drill": "tsx src/db/restore-drill.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
@@ -19,6 +20,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
