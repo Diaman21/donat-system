@@ -74,7 +74,7 @@ test('первая покупка телефона интервалом не п�
 
 // ---------- фазы цикла ----------
 
-test('боевая покупка на разогреве — danger (4 смерти из 5)', () => {
+test('боевая покупка на разогреве — danger', () => {
   const a = classifyPurchase(f({ amount: 100, dayOfCycle: 2, hadBattleBefore: false }));
   assert.ok(a.some((x) => x.severity === 'danger' && x.text.includes('2-й день')));
 });
@@ -210,4 +210,26 @@ test('опасная клетка по деньгам важнее пола по
 test('по умолчанию аппарат считается НЕ-Pro (осторожная сторона)', () => {
   const a = classifyPurchase({ ...base, amount: 30, spent24: 30, gapH: 3.2 });
   assert.equal(a[0]?.severity, 'danger');
+});
+
+// ---------- никаких вшитых чисел (аудит 07.10.2026) ----------
+//
+// Статистика дрейфует с каждой покупкой, а строка в коде — нет. До 07.10
+// оператор после каждой крупной через мобильный читал «исторически 2 ✅ / 3 💀»
+// (на деле уже 13 ✅ / 4), а про ранние боевые — «4 смерти из 5» (на деле 3 из 6).
+// Система не может учиться, если её вывод заморожен в тексте. Живые цифры — /learn.
+
+test('тексты отклонений не содержат вшитой статистики', () => {
+  const all = [
+    ...classifyPurchase(f({ amount: 100, internet: 'mobile' })),
+    ...classifyPurchase(f({ amount: 100, dayOfCycle: 2, hadBattleBefore: false })),
+    ...classifyPurchase(f({ gapH: 3, spent24: 100 })),
+    ...classifyPurchase(f({ gapH: 3.2, spent24: 30, isPro: false })),
+  ];
+  assert.ok(all.length >= 4);
+  for (const a of all) {
+    const t = `${a.text} ${a.learn ?? ''}`;
+    assert.ok(!/\d+\s*✅\s*\/\s*\d+/.test(t), `счёт исходов в тексте: ${t}`);
+    assert.ok(!/\d+\s*(💀|смерт\S*)\s*(из|на)\s*\d+/.test(t), `доля смертей в тексте: ${t}`);
+  }
 });

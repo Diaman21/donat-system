@@ -8,6 +8,8 @@ import { parsePhoneModel } from './phone-model.js';
 import { hhmmMsk, cycleDayMsk } from '../format.js';
 import type { PurchaseResultValue } from '../db/schema.js';
 import { asDeathReason } from './death.js';
+import { ZONES } from './zones.js';
+import { fmtRate } from './stats-math.js';
 
 // Значок результата. Record, а не тернарник «long ? 💀 : support ? ⚠️ : ✅» —
 // тот показал бы новый результат 🔐 verify как успешную покупку.
@@ -36,6 +38,12 @@ export interface Att {
   res: string;
   spent: number; // списано (✅ танки) за 24 ч ДО этой попытки
   gap: number | null; // часов с предыдущей покупки ЛЮБОЙ категории на этом телефоне
+  // Контекст для /learn (разрезы и проверка вне выборки). На определения
+  // интервала и суммы окна НЕ влияет — они выше, в SQL.
+  phoneId: string;
+  label: string | null;
+  internet: string | null;
+  at: string; // время попытки (timestamptz строкой)
 }
 
 /**
@@ -54,6 +62,7 @@ export interface Att {
 export async function attempts(): Promise<Att[]> {
   const rows = (await db.execute(sql`
     select p.amount::float amt, p.result::text res,
+      p.phone_id::text phone_id, ph.label, p.internet, p.purchased_at::text at,
       coalesce((select sum(q.amount) from purchases q
         join purchase_categories cq on cq.id = q.category_id
         where q.phone_id = p.phone_id and q.result = 'done' and q.id <> p.id
@@ -63,17 +72,26 @@ export async function attempts(): Promise<Att[]> {
       extract(epoch from (p.purchased_at - (select max(q.purchased_at) from purchases q
         where q.phone_id = p.phone_id and q.purchased_at < p.purchased_at)))/3600.0 gap
     from purchases p join purchase_categories c on c.id = p.category_id
+      join phones ph on ph.id = p.phone_id
     where c.code = 'game_donate'`)) as unknown as {
     amt: number;
     res: string;
     spent: number;
     gap: number | null;
+    phone_id: string;
+    label: string | null;
+    internet: string | null;
+    at: string;
   }[];
   return rows.map((r) => ({
     amt: Number(r.amt),
     res: r.res,
     spent: Number(r.spent),
     gap: r.gap == null ? null : Number(r.gap),
+    phoneId: r.phone_id,
+    label: r.label,
+    internet: r.internet,
+    at: r.at,
   }));
 }
 
@@ -288,56 +306,15 @@ export async function idleLines(): Promise<string[]> {
 export async function boundaryEvidence(): Promise<
   { key: string; label: string; v: ZoneVerdict }[]
 > {
-  const zones: { key: string; label: string; where: string }[] = [
-    {
-      key: 'gap-14-20',
-      label: `интервал 14–${CORRIDOR_MIN_H} ч (сумма < €${DANGER_EUR})`,
-      where: `gap >= 14 and gap < ${CORRIDOR_MIN_H} and spent + amt < ${DANGER_EUR}`,
-    },
-    {
-      key: 'gap-10-14',
-      label: `интервал 10–14 ч (сумма < €${DANGER_EUR})`,
-      where: `gap >= 10 and gap < 14 and spent + amt < ${DANGER_EUR}`,
-    },
-    {
-      key: 'gap-lt-10',
-      label: `интервал < 10 ч (сумма < €${DANGER_EUR})`,
-      where: `gap < 10 and spent + amt < ${DANGER_EUR}`,
-    },
-    {
-      key: 'money-over',
-      label: `сумма ≥ €${DANGER_EUR} при интервале ≥ ${CORRIDOR_MIN_H} ч`,
-      where: `spent + amt >= ${DANGER_EUR} and gap >= ${CORRIDOR_MIN_H}`,
-    },
-  ];
-
-  // Запросы независимы — гоняем параллельно. На Vercel каждый запрос это
-  // сетевой круг до Neon, и последовательный цикл из четырёх съедал бы
-  // секунды из лимита выполнения функции.
-  return Promise.all(
-    zones.map(async (z) => {
-      const r = (await db.execute(
-        sql.raw(`
-      with att as (
-        select p.result::text res,
-          coalesce((select sum(q.amount) from purchases q
-            join purchase_categories cq on cq.id = q.category_id
-            where q.phone_id = p.phone_id and q.result = 'done' and q.id <> p.id
-              and cq.code = 'game_donate'
-              and q.purchased_at >  p.purchased_at - interval '24 hours'
-              and q.purchased_at <= p.purchased_at), 0)::float spent,
-          p.amount::float amt,
-          extract(epoch from (p.purchased_at - (select max(q.purchased_at) from purchases q
-            where q.phone_id = p.phone_id and q.purchased_at < p.purchased_at)))/3600.0 gap
-        from purchases p join purchase_categories c on c.id = p.category_id
-        where c.code = 'game_donate'
-      )
-      select count(*)::int n, count(*) filter (where res = 'long')::int d
-      from att where gap is not null and (${z.where})`),
-      )) as unknown as { n: number; d: number }[];
-      return { key: z.key, label: z.label, v: assessZone(r[0]?.n ?? 0, r[0]?.d ?? 0) };
-    }),
-  );
+  // С 07.10.2026 — через эталонную attempts() и общие зоны из zones.ts.
+  // Раньше здесь был собственный SQL на каждую зону: второе определение
+  // интервала, которое могло разойтись с /corridor и подсказкой.
+  const att = (await attempts()).filter((a) => a.gap != null) as (Att & { gap: number })[];
+  return ZONES.map((z) => {
+    const inZone = att.filter((a) => z.test(a));
+    const d = inZone.filter((a) => a.res === 'long').length;
+    return { key: z.key, label: z.label, v: assessZone(inZone.length, d) };
+  });
 }
 
 /**
@@ -411,12 +388,12 @@ export async function showCorridor(ctx: AppContext): Promise<void> {
     const hd = hi.filter((a) => a.res === 'long').length;
     return (
       `${label}\n` +
-      `   < €${DANGER_EUR}:  ${String(lo.length).padStart(3)} поп · ${ld} 💀 · ${pct(ld, lo.length)}\n` +
-      `   ≥ €${DANGER_EUR}:  ${String(hi.length).padStart(3)} поп · ${hd} 💀 · ${pct(hd, hi.length)}`
+      `   < €${DANGER_EUR}:  ${String(lo.length).padStart(3)} поп · ${ld} 💀 · ${fmtRate(ld, lo.length)}\n` +
+      `   ≥ €${DANGER_EUR}:  ${String(hi.length).padStart(3)} поп · ${hd} 💀 · ${fmtRate(hd, hi.length)}`
     );
   };
   lines.push(
-    `📊 Интервал × сумма за 24 ч (танки, ${att.length} попыток)`,
+    `📊 Интервал × сумма за 24 ч (танки, ${att.length} попыток; в скобках — 95% диапазон)`,
     row(`⏱ интервал < ${CORRIDOR_MIN_H} ч`, true),
     row(`⏱ интервал ≥ ${CORRIDOR_MIN_H} ч`, false),
   );
