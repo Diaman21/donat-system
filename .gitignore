@@ -42,4 +42,6 @@ supabase/seed.sql.local
 # ---------- Local tooling ----------
 .cache/
 tmp/
+# временные скрипты проверок (однажды такой попал в коммит, 06.10.2026)
+bot/tmp-*.ts
 .claude/

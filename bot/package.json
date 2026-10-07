@@ -15,14 +15,17 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.45.2",
-    "grammy": "^1.43.0",
+    "drizzle-orm": "^0.45.3",
+    "grammy": "^1.46.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "@types/node": "^25.9.1",
-    "tsx": "^4.22.4",
+    "@types/node": "^25.9.9",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

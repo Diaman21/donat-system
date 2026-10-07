@@ -5,6 +5,16 @@ import { BOT_COMMANDS } from './commands.js';
 // Регистрация webhook у Telegram + команды бота.
 // Запуск после деплоя на Vercel:
 //   npx tsx src/setup-webhook.ts https://<project>.vercel.app/api/webhook
+//
+// Повторный запуск безопасен: настройки перезаписываются целиком.
+
+// Какие апдейты бот обрабатывает (bot.ts): команды и текст — `message`,
+// кнопки — `callback_query`. Остальные типы Telegram не присылает вовсе —
+// меньше лишних вызовов функции и меньше поводов для ошибок (аудит 07.10.2026).
+// ⚠️ Добавили в bot.ts обработчик нового типа (например my_chat_member) —
+// впишите его сюда и перезапустите скрипт, иначе апдейты не придут.
+const ALLOWED_UPDATES = ['message', 'callback_query'] as const;
+
 async function main() {
   const url = process.argv[2];
   if (!url) {
@@ -15,13 +25,18 @@ async function main() {
   const bot = new Bot(env.botToken);
   await bot.api.setWebhook(url, {
     secret_token: env.webhookSecret || undefined,
-    drop_pending_updates: true,
+    allowed_updates: [...ALLOWED_UPDATES],
+    // НЕ выбрасываем ожидающие апдейты: до 07.10.2026 здесь стояло true, и
+    // нажатие оператора, пришедшее в момент перенастройки, терялось бы молча.
+    // Потеря записи покупки — ровно то, чего система не должна допускать.
+    drop_pending_updates: false,
   });
   await bot.api.setMyCommands(BOT_COMMANDS);
 
   const info = await bot.api.getWebhookInfo();
   console.log('✅ Webhook установлен.');
   console.log(`URL: ${info.url}`);
+  console.log(`Типы апдейтов: ${(info.allowed_updates ?? ['все']).join(', ')}`);
   console.log(`Ожидающих апдейтов: ${info.pending_update_count}`);
 }
 
