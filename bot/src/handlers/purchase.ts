@@ -12,6 +12,7 @@ import { nextPurchaseHint } from './interval.js';
 import { classifyPurchase, anomalyLines } from './anomaly.js';
 import { parsePhoneModel, modelGroup } from './phone-model.js';
 import { cycleDayMsk } from '../format.js';
+import { newIdem, idemKeys } from './idem.js';
 
 // Префиксы callback-данных
 export const CB = {
@@ -429,6 +430,8 @@ export async function onResultSelected(ctx: AppContext, result: PurchaseResultVa
     qty: flow.qty,
     result,
     note: null,
+    // Одноразовый ключ потока — защита от дубля при записи (idem.ts).
+    idem: newIdem(),
   };
   await showConfirm(ctx);
 }
@@ -563,6 +566,7 @@ export async function onNoteRequest(ctx: AppContext): Promise<void> {
     units: flow.units,
     qty: flow.qty,
     result: flow.result,
+    idem: flow.idem,
   };
   await ctx.reply('Напиши заметку по закупке (логи, детали, что с саппортом и т.п.):', {
     reply_markup: cancelKb(),
@@ -584,6 +588,7 @@ export async function onPurchaseNote(ctx: AppContext, text: string): Promise<voi
     qty: flow.qty,
     result: flow.result,
     note,
+    idem: flow.idem,
   };
   await showConfirm(ctx);
 }
@@ -650,6 +655,9 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     .limit(1);
   const isPro = modelGroup(parsePhoneModel(phRow[0]?.label)) === 'pro';
 
+  // Ключи идемпотентности: у потоков, начатых до деплоя, ключа нет — выдаём
+  // здесь (для них защита от повтора не сработает, но и вреда нет).
+  const keys = idemKeys(flow.idem ?? newIdem(), flow.qty);
   const rows = Array.from({ length: flow.qty }, (_, i) => ({
     phoneId: flow.phoneId,
     operatorId: user.id,
@@ -661,8 +669,27 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     internet,
     units: flow.units,
     orderQueueId: orderId,
+    idemKey: keys[i],
   }));
-  await db.insert(purchases).values(rows);
+  // ON CONFLICT по уникальному ключу: повторная доставка апдейта или двойное
+  // нажатие на 📶/📡 несут ТОТ ЖЕ ключ потока — вторая запись не пройдёт.
+  // Дубль опаснее потери: лишняя строка выглядела бы как настоящая покупка.
+  const inserted = await db
+    .insert(purchases)
+    .values(rows)
+    .onConflictDoNothing({ target: purchases.idemKey })
+    .returning({ id: purchases.id });
+  if (inserted.length === 0) {
+    ctx.session.flow = undefined;
+    ctx.session.pendingOrderId = undefined;
+    await ctx.reply(
+      '✅ Эта закупка уже записана — пришло повторное нажатие (или Telegram ' +
+        'доставил его дважды). Второй раз ничего не записываю.\n' +
+        'Проверить: «📋 Последние» (/recent).',
+      { reply_markup: mainMenu() },
+    );
+    return;
+  }
 
   const { phoneId, result, amount, game, note, units, qty } = flow;
   ctx.session.flow = undefined;

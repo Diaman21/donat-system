@@ -93,6 +93,10 @@ export const purchases = pgTable('purchases', {
   // Заказ из order_queue, если покупка делалась по заказу (миграция 0009).
   // NULL — норма: разогрев €2 и ВК идут без заказа.
   orderQueueId: uuid('order_queue_id'),
+  // Ключ идемпотентности «<ключ потока>:<номер строки>» (миграция 0015).
+  // Уникальный индекс не даёт записать одну покупку дважды. NULL — у покупок
+  // до 07.10.2026.
+  idemKey: text('idem_key'),
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

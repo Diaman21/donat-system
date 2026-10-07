@@ -42,6 +42,7 @@ export type FlowState =
       units: number | null;
       qty: number;
       result: PurchaseResultValue;
+      idem?: string; // ключ потока — переносится обратно в подтверждение
     }
   | {
       kind: 'purchase_confirm';
@@ -53,6 +54,10 @@ export type FlowState =
       qty: number;
       result: PurchaseResultValue;
       note: string | null;
+      // Ключ идемпотентности потока (idem.ts, миграция 0015): выдаётся при
+      // входе в подтверждение и переживает правку заметки. Необязательный —
+      // у потоков, начатых до деплоя, его нет (для них защиты нет, и только).
+      idem?: string;
     };
 
 export interface SessionData {

@@ -1,6 +1,6 @@
 # Схема БД — donat-system
 
-> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0014`.
+> Исходники: [`supabase/migrations/`](../supabase/migrations/) — файлы `0001`…`0015`.
 > Применены в **Neon** (serverless Postgres, EU Central, бесплатный план) **вручную**
 > через Neon SQL Editor. Claude DDL не применяет.
 > Зеркало схемы в коде — [`bot/src/db/schema.ts`](../bot/src/db/schema.ts) (только типы и запросы).
@@ -23,6 +23,7 @@
 | `0012_bot_sessions_rls.sql` | RLS на `bot_sessions` (забыли в `0003`) — применена 12.09 |
 | `0013_purchase_result_verify.sql` | результат 🔐 `verify` («проверка данных») — применена 06.10 |
 | `0014_verify_ends_cycle.sql` | триггер: `verify` → телефон `dead`, `death_reason='verify'` — применена 06.10 |
+| `0015_purchase_idem_key.sql` | `purchases.idem_key` + уникальный индекс — защита от дубля покупки — применена 07.10 |
 
 **Никогда не редактируем уже применённую миграцию** — только новый файл `000N_*.sql`.
 
@@ -171,6 +172,7 @@ erDiagram
 |---|---|---|
 | `phone_id` | `uuid` → `phones.id` | с какого телефона |
 | `order_queue_id` | `uuid` nullable → `order_queue.id` | заказ, по которому сделана (миграция `0009`); NULL у разогрева и ВК |
+| `idem_key` | `text` nullable, **unique** | ключ идемпотентности `<ключ потока>:<номер строки>` (миграция `0015`); NULL у покупок до 07.10.2026 |
 | `operator_id` | `uuid` → `users.id` | кто вбил |
 | `category_id` | `uuid` → `purchase_categories.id` | 🎮 танки / 🗳 ВК |
 | `amount` | `numeric(12,2)` CHECK > 0 | **сумма в €** |
@@ -317,7 +319,7 @@ select ph.imei_last4, (p.purchased_at at time zone 'Europe/Moscow')::date as d,
 
 ### Как восстановить из JSON
 
-1. Создать пустую базу и применить миграции `0001`…`0014` по порядку.
+1. Создать пустую базу и применить миграции `0001`…`0015` по порядку.
 2. Взять последний `backup-full-*.json` из группы.
 3. Вставить строки **в порядке ключа `meta.tables`** — он учитывает зависимости
    внешних ключей: `users` → `purchase_categories` → `phones` → `purchases` → `order_queue`.
