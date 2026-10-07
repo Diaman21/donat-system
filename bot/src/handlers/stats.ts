@@ -98,12 +98,14 @@ export async function renderStats(
   // Громкий блок «пора выводить бюджет» — всегда наверху (не зависит от периода)
   const alertLines = await withdrawalAlerts();
 
-  // Покупки по результату (с учётом периода)
+  // Покупки по результату (с учётом периода).
+  // ⚠️ Во всех суммах € и голосов ниже — только ✅ (правило в money.ts):
+  // попытка ⚠️/💀/🔐 денег не списала. Счёт покупок — по всем попыткам.
   const byResultQuery = db
     .select({
       result: purchases.result,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
     })
     .from(purchases)
     .groupBy(purchases.result);
@@ -123,7 +125,7 @@ export async function renderStats(
 
   // Всего голосов ВК куплено (с учётом периода)
   const votesQuery = db
-    .select({ votes: sql<number>`coalesce(sum(${purchases.units}), 0)::int` })
+    .select({ votes: sql<number>`coalesce(sum(${purchases.units}) filter (where ${purchases.result} = 'done'), 0)::int` })
     .from(purchases);
   const votesRes = await (filter ? votesQuery.where(filter) : votesQuery);
   const totalVotes = votesRes[0]?.votes ?? 0;
@@ -157,7 +159,7 @@ export async function renderStats(
     .select({
       phoneId: purchases.phoneId,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
     })
     .from(purchases)
     .groupBy(purchases.phoneId);
@@ -185,8 +187,8 @@ export async function renderStats(
     .select({
       code: purchaseCategories.code,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
-      votes: sql<number>`coalesce(sum(${purchases.units}), 0)::int`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
+      votes: sql<number>`coalesce(sum(${purchases.units}) filter (where ${purchases.result} = 'done'), 0)::int`,
     })
     .from(purchases)
     .innerJoin(purchaseCategories, eq(purchaseCategories.id, purchases.categoryId))
@@ -209,7 +211,7 @@ export async function renderStats(
     .select({
       game: purchases.game,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
     })
     .from(purchases)
     .groupBy(purchases.game);
@@ -226,7 +228,7 @@ export async function renderStats(
     .select({
       internet: purchases.internet,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
     })
     .from(purchases)
     .groupBy(purchases.internet);
@@ -245,7 +247,7 @@ export async function renderStats(
     .select({
       username: users.username,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`,
     })
     .from(purchases)
     .innerJoin(users, eq(users.id, purchases.operatorId))

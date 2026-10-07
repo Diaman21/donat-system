@@ -6,6 +6,7 @@ import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { fmtMsk } from '../format.js';
 import { PHONE_MARK, PHONE_STATE } from './menus.js';
+import { paidEur, paidUnits } from './money.js';
 
 export const HIST_CB = 'hist:'; // + phoneId
 
@@ -68,7 +69,8 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
     .where(eq(purchases.phoneId, phoneId))
     .orderBy(asc(purchases.purchasedAt));
 
-  const total = items.reduce((a, p) => a + Number(p.amount), 0);
+  // € и голоса — только ✅ (money.ts); счёт покупок — все попытки.
+  const total = items.reduce((a, p) => a + paidEur(p), 0);
   const statusLabel = PHONE_STATE[ph.status];
   const label = ph.label ? ` «${ph.label}»` : '';
 
@@ -77,8 +79,8 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
     const rows = items.filter((p) => p.catCode === code);
     return {
       c: rows.length,
-      sum: rows.reduce((a, p) => a + Number(p.amount), 0),
-      votes: rows.reduce((a, p) => a + (p.units ?? 0), 0),
+      sum: rows.reduce((a, p) => a + paidEur(p), 0),
+      votes: rows.reduce((a, p) => a + paidUnits(p), 0),
     };
   };
   const tanks = sumBy('game_donate');

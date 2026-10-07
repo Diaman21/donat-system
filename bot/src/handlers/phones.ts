@@ -47,7 +47,7 @@ export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<vo
       diedAt: phones.diedAt,
       deathReason: phones.deathReason,
       cnt: sql<number>`(select count(*)::int from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
-      total: sql<string>`(select coalesce(sum(${purchases.amount}), 0) from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
+      total: sql<string>`(select coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0) from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
     })
     .from(phones)
     .where(eq(phones.imeiLast4, imei))
@@ -347,7 +347,7 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     .select({
       phoneId: purchases.phoneId,
       cnt: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${purchases.amount}), 0)`,
+      total: sql<string>`coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0)`, // только ✅
       // Большая покупка в Furious делается только ОДИН раз на телефон.
       // €100 — страховка от ручного ввода: в Furious всегда €105.
       furBig: sql<number>`count(*) filter (

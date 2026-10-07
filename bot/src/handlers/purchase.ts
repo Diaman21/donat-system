@@ -439,8 +439,8 @@ async function phoneTotals(
 ): Promise<{ cnt: number; eur: number; votes: number }> {
   const rows = (await db.execute(sql`
     select count(*)::int as cnt,
-           coalesce(sum(amount),0)::float as eur,
-           coalesce(sum(units),0)::int as votes
+           coalesce(sum(amount) filter (where result = 'done'),0)::float as eur,   -- € и голоса — только ✅
+           coalesce(sum(units) filter (where result = 'done'),0)::int as votes
     from purchases where phone_id = ${phoneId}
   `)) as unknown as { cnt: number; eur: number; votes: number }[];
   return rows[0] ?? { cnt: 0, eur: 0, votes: 0 };
@@ -452,7 +452,7 @@ async function todayTally(
 ): Promise<{ tank: Record<number, number>; vkCnt: number; vkVotes: number }> {
   const rows = (await db.execute(sql`
     select c.code as code, p.amount::float as amount, count(*)::int as cnt,
-           coalesce(sum(p.units),0)::int as votes
+           coalesce(sum(p.units) filter (where p.result = 'done'),0)::int as votes
     from purchases p join purchase_categories c on c.id = p.category_id
     where p.phone_id = ${phoneId}
       and (p.purchased_at at time zone 'Europe/Moscow')::date

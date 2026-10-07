@@ -5,6 +5,7 @@ import { phones, purchases, purchaseCategories, type PurchaseResultValue } from 
 import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
 import { asDeathReason, DEATH_FULL } from './death.js';
+import { paidEur, paidUnits } from './money.js';
 
 function fmtSpan(ms: number): string {
   const totalHours = Math.floor(ms / 3_600_000);
@@ -132,8 +133,9 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
     .orderBy(desc(purchases.purchasedAt));
 
   const cnt = all.length;
-  const total = all.reduce((a, p) => a + Number(p.amount), 0);
-  const totalUnits = all.reduce((a, p) => a + (p.units ?? 0), 0);
+  // € и голоса — только ✅: убившая попытка денег не списала (money.ts).
+  const total = all.reduce((a, p) => a + paidEur(p), 0);
+  const totalUnits = all.reduce((a, p) => a + paidUnits(p), 0);
   const end = ph.diedAt ?? new Date();
   const span = end.getTime() - ph.connectedAt.getTime();
 
@@ -141,8 +143,8 @@ export async function buildPostMortem(phoneId: string): Promise<string> {
   const sumBy = (code: string) => {
     const rows = all.filter((p) => p.catCode === code);
     const c = rows.length;
-    const sum = rows.reduce((a, p) => a + Number(p.amount), 0);
-    const votes = rows.reduce((a, p) => a + (p.units ?? 0), 0);
+    const sum = rows.reduce((a, p) => a + paidEur(p), 0);
+    const votes = rows.reduce((a, p) => a + paidUnits(p), 0);
     return { c, sum, votes };
   };
   const tanks = sumBy('game_donate');

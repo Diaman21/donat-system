@@ -29,7 +29,7 @@ export async function showVkReport(ctx: AppContext): Promise<void> {
   const rows = (await db.execute(sql`
     select ph.id, ph.imei_last4 as imei, ph.label, ph.status,
            to_char((p.purchased_at at time zone 'Europe/Moscow')::date, 'DD.MM') as d,
-           coalesce(sum(p.units),0)::int as votes,
+           coalesce(sum(p.units) filter (where p.result = 'done'),0)::int as votes,   -- пришли только по ✅
            count(*)::int as cnt,
            sum(case when p.result='support' then 1 else 0 end)::int as sup,
            sum(case when p.result='long' then 1 else 0 end)::int as dead,

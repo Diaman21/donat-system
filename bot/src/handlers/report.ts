@@ -104,7 +104,7 @@ async function showDays(ctx: AppContext, from: string, to: string, edit: boolean
     select to_char((purchased_at at time zone 'Europe/Moscow')::date, 'YYYY-MM-DD') as d,
            count(*)::int as cnt,
            count(distinct phone_id)::int as tels,
-           coalesce(sum(amount),0)::float as eur
+           coalesce(sum(amount) filter (where result = 'done'),0)::float as eur   -- только ✅ (money.ts)
     from purchases
     where (purchased_at at time zone 'Europe/Moscow')::date between ${from}::date and ${to}::date
     group by 1 order by 1
@@ -137,8 +137,8 @@ async function showDay(ctx: AppContext, day: string, edit: boolean) {
   const rows = (await db.execute(sql`
     select ph.id, ph.imei_last4 as imei, ph.label,
            count(*)::int as cnt,
-           coalesce(sum(p.amount),0)::float as eur,
-           coalesce(sum(p.units),0)::int as votes,
+           coalesce(sum(p.amount) filter (where p.result = 'done'),0)::float as eur,
+           coalesce(sum(p.units) filter (where p.result = 'done'),0)::int as votes,
            sum(case when p.result='support' then 1 else 0 end)::int as sup,
            sum(case when p.result='long' then 1 else 0 end)::int as dead,
            sum(case when p.result='verify' then 1 else 0 end)::int as ver
