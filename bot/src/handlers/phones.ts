@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { phones, purchases } from '../db/schema.js';
@@ -10,6 +10,7 @@ import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate } from '../format.js';
 import { HIST_CB } from './history.js';
 import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
+import { imeiRepeatNotice } from './phone-dup.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
@@ -118,30 +119,57 @@ export async function onAddPhoneImei(ctx: AppContext, text: string): Promise<voi
     return;
   }
 
-  // те же 4 цифры уже были в истории (умершие) — предупреждаем, но не блокируем
-  const past = await db
-    .select({ label: phones.label, diedAt: phones.diedAt, deathReason: phones.deathReason })
+  // Те же 4 цифры уже есть в РЕЗЕРВЕ или в истории (умершие) — предупреждаем,
+  // но не блокируем: цифры у разных аппаратов могут совпасть.
+  // Резерв проверяем с 07.10.2026 — до этого так появился дубль …3977.
+  const twins = await db
+    .select({
+      id: phones.id,
+      label: phones.label,
+      status: phones.status,
+      diedAt: phones.diedAt,
+      deathReason: phones.deathReason,
+      createdAt: phones.createdAt,
+    })
     .from(phones)
-    .where(and(eq(phones.imeiLast4, imei), eq(phones.status, 'dead')))
-    .orderBy(desc(phones.diedAt));
-  if (past.length > 0) {
-    const p = past[0]!;
-    const dr = asDeathReason(p.deathReason);
-    const reason = dr ? DEATH_SHORT[dr] : '—';
-    const when = p.diedAt ? fmtMsk(p.diedAt) : '—';
-    const lbl = p.label ? ` «${p.label}»` : '';
-    const more = past.length > 1 ? ` Всего таких в истории: ${past.length}.` : '';
-    const kb = new InlineKeyboard()
-      .text('✅ Это новый аппарат — привязать', `${ADDPH_CB}${imei}`)
+    .where(and(eq(phones.imeiLast4, imei), inArray(phones.status, ['prepared', 'dead'])))
+    .orderBy(desc(phones.createdAt));
+  const prepared = twins.filter((t) => t.status === 'prepared');
+  const past = twins
+    .filter((t) => t.status === 'dead')
+    .sort((a, b) => (b.diedAt?.getTime() ?? 0) - (a.diedAt?.getTime() ?? 0));
+  const lastDead = past[0];
+  const deadReason = asDeathReason(lastDead?.deathReason);
+  const notice = imeiRepeatNotice(
+    imei,
+    prepared.map((p) => ({ label: p.label, since: fmtMskDate(p.createdAt) })),
+    lastDead
+      ? {
+          label: lastDead.label,
+          when: lastDead.diedAt ? fmtMsk(lastDead.diedAt) : '—',
+          reason: deadReason ? DEATH_SHORT[deadReason] : '—',
+          count: past.length,
+        }
+      : null,
+  );
+  if (notice) {
+    const kb = new InlineKeyboard();
+    // «Взять из резерва» — через тот же обработчик, что кнопка в 🧰 списке:
+    // перевод prepared → active с лимитом ≤3, отсчёт жизни с этого момента.
+    // Если на этих цифрах уже кто-то умер, текст советует НЕ брать резервную
+    // запись (похоже на отработавший аппарат) — и кнопку не показываем, чтобы
+    // не противоречить себе. Взять всё равно можно из списка 🧰.
+    for (const p of lastDead ? [] : prepared.slice(0, 3)) {
+      kb.text(`▶️ Взять из резерва …${imei}${p.label ? ` «${p.label}»` : ''}`, `${PREP_CB}${p.id}`).row();
+    }
+    kb.text('✅ Это другой аппарат — новая запись', `${ADDPH_CB}${imei}`)
       .row()
       .text('❌ Отмена', CANCEL_CB);
-    await ctx.reply(
-      `⚠️ На …${imei} уже работали${lbl}: умер ${when} (${reason}).${more}\n\n` +
-        'Последние 4 цифры IMEI могут совпадать у разных аппаратов. ' +
-        'Это тот же телефон или новый с теми же цифрами?',
-      { reply_markup: kb },
-    );
-    return; // ждём подтверждения кнопкой
+    // Ждём кнопку: текстовый ввод IMEI больше не нужен, иначе следующее
+    // сообщение оператора приняли бы за новые 4 цифры.
+    ctx.session.flow = undefined;
+    await ctx.reply(notice, { reply_markup: kb });
+    return;
   }
 
   ctx.session.flow = { kind: 'add_phone_label', imei };
