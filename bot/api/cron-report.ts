@@ -31,6 +31,24 @@ export default async function handler(req: any, res: any): Promise<void> {
   // подхватил TELEGRAM_GROUP_ID и TELEGRAM_TOPIC_*, можно было только лишней
   // сводкой в группе — и тему всё равно не увидеть (бот не читает группу).
   if (String(req.url ?? '').includes('dry=1')) {
+    // Плюс здоровье связи с Telegram — со стороны Vercel. Из сети владельца
+    // api.telegram.org бывает недоступен (08.10.2026: таймаут), а бот живёт
+    // на Vercel, и проверять надо оттуда, где он работает.
+    let telegram: Record<string, unknown>;
+    try {
+      const wh = await new Bot(env.botToken).api.getWebhookInfo();
+      telegram = {
+        ok: true,
+        webhook: wh.url,
+        pending: wh.pending_update_count,
+        allowed: wh.allowed_updates ?? 'все',
+        lastError: wh.last_error_date
+          ? `${new Date(wh.last_error_date * 1000).toISOString()} ${wh.last_error_message ?? ''}`
+          : null,
+      };
+    } catch (err) {
+      telegram = { ok: false, error: String(err).slice(0, 200) };
+    }
     res.statusCode = 200;
     res.setHeader('content-type', 'application/json; charset=utf-8');
     res.end(
@@ -41,6 +59,7 @@ export default async function handler(req: any, res: any): Promise<void> {
           backup: inTopic('backup').message_thread_id ?? null,
           orders: inTopic('orders').message_thread_id ?? null,
         },
+        telegram,
       }),
     );
     return;
