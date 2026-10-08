@@ -25,6 +25,27 @@ export default async function handler(req: any, res: any): Promise<void> {
     }
   }
 
+  // Проверка настроек БЕЗ отправки (?dry=1, только с секретом крона):
+  // куда бы ушла сводка и в какие темы — бэкап и заказы. Появилась 08.10.2026,
+  // когда группа стала супергруппой с темами: иначе проверить, что Vercel
+  // подхватил TELEGRAM_GROUP_ID и TELEGRAM_TOPIC_*, можно было только лишней
+  // сводкой в группе — и тему всё равно не увидеть (бот не читает группу).
+  if (String(req.url ?? '').includes('dry=1')) {
+    res.statusCode = 200;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(
+      JSON.stringify({
+        group: env.groupChatId || null,
+        topics: {
+          summary: inTopic('summary').message_thread_id ?? null,
+          backup: inTopic('backup').message_thread_id ?? null,
+          orders: inTopic('orders').message_thread_id ?? null,
+        },
+      }),
+    );
+    return;
+  }
+
   if (!env.groupChatId) {
     res.statusCode = 200;
     res.end('Группа не настроена (нет TELEGRAM_GROUP_ID).');
