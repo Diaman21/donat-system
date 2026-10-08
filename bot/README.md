@@ -158,8 +158,9 @@ npm start                         # long polling (нужен dev-токен!)
 и накопление доказательств, `phone-model.test.ts` — разбор модели из метки
 (на реальных 48 метках), `death.test.ts` — разбор причины смерти телефона, `money.test.ts` — деньги только по ✅,
 `phone-dup.test.ts` — предупреждение о повторе IMEI (резерв и умершие),
-`idem.test.ts` — ключи защиты от дубля покупки, `db/restore.test.ts` — восстановление из бэкапа.
-Всего **140 тестов**.
+`idem.test.ts` — ключи защиты от дубля покупки, `db/restore.test.ts` — восстановление из бэкапа,
+`stats-math.test.ts` — интервал Уилсона и Каплан–Мейер, `zones.test.ts` — зоны и правила
+(согласованы с классификатором). Всего **162 теста**.
 Эти модули намеренно не ходят в БД, поэтому тесты гоняются в CI без секретов
 и без сети. Интерфейс бота не покрываем.
 
@@ -179,6 +180,8 @@ npx tsx src/db/set-role.ts <telegram_id> <role>    # назначить роль
 npx tsx src/db/set-warmup.ts                       # обновить warmup_config категорий
 npx tsx src/db/reset-data.ts --yes                 # ⚠️ снести ВСЕ покупки и телефоны
 npx tsx src/setup-webhook.ts <url>/api/webhook     # зарегистрировать webhook + меню команд
+npx tsx src/setup-topics.ts [--create]             # проверить / создать темы в группе
+npm run restore-drill [-- файл.json]               # учебное восстановление бэкапа (только чтение)
 ```
 
 ## Структура
@@ -199,7 +202,9 @@ bot/
     ├── format.ts           ⭐ время И календарь МСК — единственное место
     ├── format.test.ts      тесты календаря
     ├── notify.ts           уведомления модератору
-    ├── setup-webhook.ts    регистрация webhook и команд
+    ├── setup-webhook.ts    регистрация webhook и команд (allowed_updates, без потери ожидающих)
+    ├── setup-topics.ts     темы группы: проверка и создание
+    ├── group.ts            inTopic() — в какую тему писать (по env, необязательно)
     ├── db/
     │   ├── client.ts       подключение к Neon (drizzle + postgres.js)
     │   ├── schema.ts       Drizzle-схема (зеркало миграций)
