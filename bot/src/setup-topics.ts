@@ -28,18 +28,19 @@ async function main(): Promise<void> {
   let chatId: number | string = env.groupChatId;
 
   // Обычная группа после включения тем становится супергруппой с новым ID.
-  // Telegram в ответ на старый ID сообщает новый — ловим и переходим на него.
-  let chat;
+  // ⚠️ getChat по СТАРОМУ номеру продолжает отдавать старую группу как ни в
+  // чём не бывало (поймано 08.10.2026). О переезде Telegram сообщает только
+  // на попытку что-то отправить — поэтому «печатает…»: безобидно и видно.
   try {
-    chat = await bot.api.getChat(chatId);
+    await bot.api.sendChatAction(chatId, 'typing');
   } catch (e) {
     const moved = e instanceof GrammyError ? e.parameters?.migrate_to_chat_id : undefined;
     if (!moved) throw e;
     console.log(`⚠️ Группа стала супергруппой: новый ID ${moved}`);
     console.log(`   → поменяйте TELEGRAM_GROUP_ID на ${moved} в Vercel и в .env`);
     chatId = moved;
-    chat = await bot.api.getChat(chatId);
   }
+  const chat = await bot.api.getChat(chatId);
 
   const me = await bot.api.getMe();
   const member = await bot.api.getChatMember(chatId, me.id);
@@ -66,7 +67,11 @@ async function main(): Promise<void> {
     const topic = await bot.api.createForumTopic(chatId, t.name);
     console.log(`${t.env}=${topic.message_thread_id}`);
   }
-  console.log('\nПотом Redeploy в Vercel. До этого бот пишет в группу как раньше.');
+  console.log('\nПотом Redeploy в Vercel.');
+  if (String(chatId) !== String(env.groupChatId)) {
+    // Группа переехала: по старому номеру Telegram сообщения уже не принимает.
+    console.log('⚠️ Пока TELEGRAM_GROUP_ID в Vercel старый, сводки и бэкапы в группу НЕ доходят — обновите сразу.');
+  }
 }
 
 main().catch((err) => {
