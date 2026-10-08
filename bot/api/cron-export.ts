@@ -1,5 +1,6 @@
 import { Bot, InputFile } from 'grammy';
 import { env } from '../src/config.js';
+import { inTopic } from '../src/group.js';
 import { buildPurchasesCsv } from '../src/handlers/export.js';
 import { buildFullBackup } from '../src/handlers/backup.js';
 import { notifyModerator } from '../src/notify.js';
@@ -42,6 +43,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       env.groupChatId,
       new InputFile(Buffer.from(full.json, 'utf8'), `backup-full-${stamp}.json`),
       {
+        ...inTopic('backup'),
         caption:
           `🗄 Полный бэкап на ${stamp}\n${parts}\n` +
           `${(full.bytes / 1024).toFixed(0)} КБ · из него база восстанавливается целиком`,
@@ -54,7 +56,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       await bot.api.sendDocument(
         env.groupChatId,
         new InputFile(Buffer.from(csv.csv, 'utf8'), `purchases-${stamp}.csv`),
-        { caption: `📄 Покупки в Excel: ${csv.count} строк` },
+        { ...inTopic('backup'), caption: `📄 Покупки в Excel: ${csv.count} строк` },
       );
     }
 

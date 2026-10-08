@@ -40,6 +40,14 @@ export const env = {
   moderatorChatId: process.env.TELEGRAM_MODERATOR_CHAT_ID ?? '',
   /** ID группы для статистики (опционально, заполним после получения ID). */
   groupChatId: process.env.TELEGRAM_GROUP_ID ?? '',
+  /**
+   * Темы группы (форум-режим), необязательные: номер темы (message_thread_id).
+   * Пусто — пишем в группу как раньше (в «General»). Завести темы:
+   * src/setup-topics.ts. Добавлено 07.10.2026: бэкапы засоряли ленту сводок.
+   */
+  topicSummary: process.env.TELEGRAM_TOPIC_SUMMARY ?? '',
+  topicBackup: process.env.TELEGRAM_TOPIC_BACKUP ?? '',
+  topicOrders: process.env.TELEGRAM_TOPIC_ORDERS ?? '',
   /** Секрет вебхука (Vercel): Telegram шлёт его в заголовке, мы проверяем. */
   webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
   /** Секрет cron (Vercel): шлётся в Authorization при вызове по расписанию. */

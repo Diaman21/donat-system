@@ -15,6 +15,7 @@ import { requireOperator } from './start.js';
 import { cancelKb, requirePrivate } from './common.js';
 import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
+import { inTopic } from '../group.js';
 
 // «📥 Заказы» — простой список задач команды: скинул текст → отметил выполненным.
 // С покупками сознательно НЕ связан (чтобы не мусорить данные «зелёного коридора»).
@@ -162,7 +163,7 @@ async function notifyGroupNewOrder(
       mentions ? `👉 ${mentions} — в работу!` : '👉 В работу!',
       `Открытых заказов: ${open}`,
     ].join('\n');
-    await ctx.api.sendMessage(env.groupChatId, text);
+    await ctx.api.sendMessage(env.groupChatId, text, inTopic('orders'));
   } catch (err) {
     console.error('Не удалось отправить заказ в группу:', err);
   }

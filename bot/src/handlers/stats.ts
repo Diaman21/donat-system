@@ -5,6 +5,7 @@ import { phones, purchases, purchaseCategories, users, type PurchaseResultValue 
 import type { AppContext } from '../context.js';
 import { requireOperator } from './start.js';
 import { env } from '../config.js';
+import { inTopic } from '../group.js';
 import { mskTodayIso, daysBetweenIso, addDaysIso, ddmmOf } from '../format.js';
 import { WITHDRAW_DAYS, withdrawStage, type WithdrawStage } from './interval.js';
 
@@ -318,7 +319,7 @@ export async function sendReportToGroup(ctx: AppContext): Promise<void> {
   }
   const { text } = await renderStats('7d');
   try {
-    await ctx.api.sendMessage(env.groupChatId, text);
+    await ctx.api.sendMessage(env.groupChatId, text, inTopic('summary'));
     await ctx.reply('✅ Отчёт отправлен в группу.');
   } catch (err) {
     console.error('Не удалось отправить отчёт в группу:', err);

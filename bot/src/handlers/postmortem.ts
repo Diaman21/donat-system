@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
 import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
+import { inTopic } from '../group.js';
 import { asDeathReason, DEATH_FULL } from './death.js';
 import { paidEur, paidUnits } from './money.js';
 
@@ -104,7 +105,7 @@ export async function postCycleToGroup(api: Api, phoneId: string): Promise<void>
   if (!env.groupChatId) return;
   try {
     const text = await buildCycleSummary(phoneId);
-    if (text) await api.sendMessage(env.groupChatId, text);
+    if (text) await api.sendMessage(env.groupChatId, text, inTopic('summary'));
   } catch (err) {
     console.error('Не удалось отправить итог цикла в группу:', err);
   }

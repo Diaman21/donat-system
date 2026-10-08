@@ -1,5 +1,6 @@
 import { Bot } from 'grammy';
 import { env } from '../src/config.js';
+import { inTopic } from '../src/group.js';
 import { renderStats } from '../src/handlers/stats.js';
 import {
   phonesNowLines,
@@ -68,7 +69,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       '',
       text,
     ];
-    await bot.api.sendMessage(env.groupChatId, parts.join('\n'));
+    await bot.api.sendMessage(env.groupChatId, parts.join('\n'), inTopic('summary'));
     res.statusCode = 200;
     res.end('ok');
   } catch (err) {
