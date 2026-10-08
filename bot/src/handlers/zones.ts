@@ -79,3 +79,10 @@ export const RULES: Rule[] = [
     violates: (a, isPro) => !isPro && a.gap < MIN_GAP_WEAK_H,
   },
 ];
+
+/**
+ * Версия правил — дата последней фиксации. Пишется в журнал подсказок
+ * (advice_log.rules), чтобы потом не путать «бот не предупредил» с
+ * «такого правила тогда ещё не было». Поменяли правило — добавьте его в RULES.
+ */
+export const RULES_VERSION = RULES.map((r) => r.since).sort().at(-1)!;

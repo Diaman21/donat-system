@@ -161,8 +161,44 @@ export async function learnLines(now: Date = new Date()): Promise<string[]> {
     `   начали рано: ${grp([...early])}`,
     `   по протоколу: ${grp([...battled].filter((id) => !early.has(id)))}`,
     '',
-    '⚖️ Границы и правила меняет человек. Широкий диапазон = данных мало, выводы рано.',
   );
+
+  // ---------- 6. Журнал подсказок: следуют ли и чем кончается ----------
+  // Для каждой записанной подсказки берём СЛЕДУЮЩУЮ танковую попытку на том же
+  // телефоне и сравниваем её время с разрешённым (крупная — с next_big_at,
+  // остальное — с next_small_at). Минута допуска — на округление ввода.
+  const log = (await db.execute(sql`
+    select a.created_at, a.next_small_at, a.next_big_at, p.purchased_at at,
+      (select row_to_json(n) from (
+         select q.amount::float amt, q.result::text res, q.purchased_at at
+         from purchases q join purchase_categories cq on cq.id = q.category_id
+         where q.phone_id = a.phone_id and cq.code = 'game_donate' and q.purchased_at > p.purchased_at
+         order by q.purchased_at limit 1) n) nxt
+    from advice_log a join purchases p on p.id = a.purchase_id
+    order by a.created_at`)) as unknown as {
+    created_at: string;
+    next_small_at: string | null;
+    next_big_at: string | null;
+    nxt: { amt: number; res: string; at: string } | null;
+  }[];
+  out.push('6️⃣ Журнал подсказок — следуют ли им и чем кончается');
+  if (log.length === 0) {
+    out.push('   ведётся с 08.10.2026, записей пока нет — появятся с первыми покупками');
+  } else {
+    const judged = log.filter((l) => l.nxt && (l.nxt.amt >= 100 ? l.next_big_at : l.next_small_at));
+    const early = judged.filter((l) => {
+      const allowed = Date.parse((l.nxt!.amt >= 100 ? l.next_big_at : l.next_small_at)!);
+      return Date.parse(l.nxt!.at) < allowed - 60_000;
+    });
+    const onTime = judged.filter((l) => !early.includes(l));
+    const bad = (xs: typeof log) => xs.filter((l) => l.nxt!.res === 'long' || l.nxt!.res === 'verify').length;
+    out.push(
+      `   записей ${log.length} с ${ddmm(log[0]!.created_at.slice(0, 10))}, со следующей покупкой — ${judged.length}`,
+      `   по правилам (не раньше разрешённого): ${onTime.length} · 💀/🔐 ${bad(onTime)} · ${fmtRate(bad(onTime), onTime.length)}`,
+      `   раньше разрешённого: ${early.length} · 💀/🔐 ${bad(early)} · ${fmtRate(bad(early), early.length)}`,
+    );
+  }
+  out.push('', '⚖️ Границы и правила меняет человек. Широкий диапазон = данных мало, выводы рано.');
   return out;
 }
 

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { hhmmMsk } from '../format.js';
 import {
   DANGER_EUR,
   CORRIDOR_MIN_H,
@@ -14,6 +15,7 @@ import {
   WITHDRAW_DAYS,
   WARN_FROM_DAY,
   withdrawStage,
+  allowedAt,
   type Charge,
 } from './interval.js';
 
@@ -392,4 +394,45 @@ test('пороги фазы согласованы между собой', () =>
   assert.equal(WARN_FROM_DAY, 12);
   assert.ok(WARN_FROM_DAY < WITHDRAW_DAYS, 'предупреждать нужно ДО вывода');
   assert.ok(WARMUP_DAYS < WARN_FROM_DAY, 'разогрев должен кончаться задолго до вывода');
+});
+
+// ---------- allowedAt: время для журнала подсказок (0016) ----------
+//
+// Должно совпадать с тем, что подсказка говорит оператору, — иначе журнал
+// будет мерить «следовал ли совету» против совета, которого не было.
+
+const NOW = '2026-10-07T09:00:00.000Z';
+const hoursAfter = (d: Date) => (d.getTime() - at(NOW).getTime()) / 3_600_000;
+
+test('allowedAt: после €100 крупная и тридцатка — через 20 ч', () => {
+  const c = [ch(NOW, 100)];
+  assert.equal(hoursAfter(allowedAt(c, 100, at(NOW), true)), 20);
+  assert.equal(hoursAfter(allowedAt(c, 30, at(NOW), true)), 20, '€100 + €30 = €130 — ждём 20 ч');
+});
+
+test('allowedAt: после €30 на Pro тридцатка — сразу, на не-Pro — через 10 ч', () => {
+  const c = [ch(NOW, 30)];
+  assert.equal(hoursAfter(allowedAt(c, 30, at(NOW), true)), 0);
+  assert.equal(hoursAfter(allowedAt(c, 30, at(NOW), false)), 10);
+});
+
+test('allowedAt: после трёх тридцаток четвёртая ждёт, пока первая выпадет из окна', () => {
+  // €30 в 01:00, 05:00, 09:00 (сейчас). Четвёртая дала бы €120 — ждём,
+  // пока 01:00 выпадет из 24-часового окна: это 01:00 завтра = +16 ч,
+  // раньше 20-часовой отметки.
+  const c = [ch('2026-10-07T01:00:00.000Z', 30), ch('2026-10-07T05:00:00.000Z', 30), ch(NOW, 30)];
+  assert.equal(hoursAfter(allowedAt(c, 30, at(NOW), true)), 16);
+});
+
+test('allowedAt: крупная после тридцатки — по деньгам сразу (€130? нет — €30 + €100 ≥ €120)', () => {
+  const c = [ch(NOW, 30)];
+  // €30 + €100 = €130 ≥ €120 → только когда €30 выпадет (+24 ч) или по времени (+20 ч).
+  assert.equal(hoursAfter(allowedAt(c, 100, at(NOW), true)), 20);
+});
+
+test('allowedAt: согласовано с подсказкой — «не раньше» в тексте совпадает', () => {
+  const c = [ch(NOW, 30)];
+  const hint = nextPurchaseHint({ now: at(NOW), charges: c, result: 'done', dayOfCycle: 5, hadBattle: true, isPro: false }).join('\n');
+  const t = allowedAt(c, 30, at(NOW), false);
+  assert.ok(hint.includes('не раньше') && hint.includes(hhmmMsk(t)), hint);
 });

@@ -10,7 +10,8 @@ import { db } from '../db/client.js';
 // Здесь — сырые строки всех рабочих таблиц, восстанавливаются один в один.
 
 // Порядок важен: при восстановлении вставлять именно так (FK-зависимости).
-const TABLES = ['users', 'purchase_categories', 'phones', 'purchases', 'order_queue'] as const;
+// advice_log (журнал подсказок, миграция 0016) — с 07.10.2026.
+const TABLES = ['users', 'purchase_categories', 'phones', 'purchases', 'order_queue', 'advice_log'] as const;
 
 // bot_sessions не бэкапим — это временное состояние ввода, ценности нет.
 //

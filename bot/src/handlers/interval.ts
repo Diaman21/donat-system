@@ -191,6 +191,25 @@ export function earliestFitting(charges: Charge[], amount: number, from: Date): 
   return null;
 }
 
+/**
+ * С какого момента по правилам протокола можно следующую покупку на `amount`
+ * на этом телефоне, если только что (в `now`) была покупка. Для журнала
+ * подсказок (advice_log, миграция 0016): потом сверяем, когда оператор
+ * реально купил, и чем кончилось.
+ *
+ * Правило ровно то же, что у подсказки и у зон (zones.ts):
+ *   можно, если интервал ≥ CORRIDOR_MIN_H ИЛИ сумма за 24 ч + amount < DANGER_EUR,
+ *   И у не-Pro интервал ≥ MIN_GAP_WEAK_H.
+ * Интервал отсчитывается от `now` — от только что записанной покупки.
+ */
+export function allowedAt(charges: Charge[], amount: number, now: Date, isPro: boolean): Date {
+  const byTime = now.getTime() + CORRIDOR_MIN_H * H; // после 20 ч сумма не важна
+  const byMoney = earliestFitting(charges, amount, now)?.getTime() ?? Infinity;
+  let t = Math.min(byTime, byMoney);
+  if (!isPro) t = Math.max(t, now.getTime() + MIN_GAP_WEAK_H * H);
+  return new Date(t);
+}
+
 // «сегодня» / «завтра» / «послезавтра» / «15.09» — по московскому календарю.
 // Считаем от момента покупки, а не от «сейчас»: сообщение остаётся верным,
 // даже если его перечитают позже.

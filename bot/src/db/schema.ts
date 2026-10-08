@@ -103,6 +103,21 @@ export const purchases = pgTable('purchases', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- advice_log — журнал подсказок (миграция 0016) ----------
+// Что бот сказал оператору после записи покупки: какие отклонения назвал
+// (по постоянным кодам) и с какого часа разрешил следующую €30 / €100.
+// Нужен, чтобы проверять, точны ли подсказки и следуют ли им (/learn).
+export const adviceLog = pgTable('advice_log', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  purchaseId: uuid('purchase_id').notNull(),
+  phoneId: uuid('phone_id').notNull(),
+  anomalies: jsonb('anomalies').notNull().default([]),
+  nextSmallAt: timestamp('next_small_at', { withTimezone: true }),
+  nextBigAt: timestamp('next_big_at', { withTimezone: true }),
+  rules: text('rules').notNull(),
+});
+
 // ---------- bot_sessions — состояние пошагового ввода (grammy session) ----------
 // Нужно для serverless (Vercel): память между запросами не сохраняется.
 export const botSessions = pgTable('bot_sessions', {

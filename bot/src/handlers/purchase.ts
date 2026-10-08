@@ -1,14 +1,15 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases, purchaseCategories, type PurchaseResultValue } from '../db/schema.js';
+import { phones, purchases, purchaseCategories, adviceLog, type PurchaseResultValue } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
-import { nextPurchaseHint } from './interval.js';
+import { nextPurchaseHint, allowedAt, SMALL_EUR, BIG_EUR, SUPPORT_REST_H } from './interval.js';
+import { RULES_VERSION } from './zones.js';
 import { classifyPurchase, anomalyLines } from './anomaly.js';
 import { parsePhoneModel, modelGroup } from './phone-model.js';
 import { cycleDayMsk } from '../format.js';
@@ -736,7 +737,31 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   // ⚠️ Условие перечисляет, КОГДА показывать, а не когда нет: новый результат
   // по умолчанию подсказку не получит. Раньше было «!== 'long'», и 🔐 verify
   // молча получил бы совет «можно ещё 2 тридцатки» на выкаченном телефоне.
-  if (flow.categoryCode === 'game_donate' && (result === 'done' || result === 'support')) {
+  // Фаза цикла и отклонения — по состоянию ДО этой покупки, для ВСЕХ танковых
+  // результатов. Показываем их оператору только при ✅/⚠️ (как и раньше), но
+  // в журнал подсказок пишем и при 💀/🔐: что предшествовало концу цикла —
+  // самое ценное для обучения системы.
+  const isTank = flow.categoryCode === 'game_donate';
+  const st = before[0];
+  const firstDay = st?.first_day ?? null;
+  const dayOfCycle = firstDay ? cycleDayMsk(firstDay) : null;
+  const anomalies = isTank
+    ? classifyPurchase({
+        amount: Number(amount),
+        result,
+        gapH: st?.gap_h == null ? null : Number(st.gap_h),
+        spent24: Number(st?.spent24 ?? 0),
+        dayOfCycle,
+        hadBattleBefore: Boolean(st?.had_battle),
+        internet,
+        isPro,
+        isTank: true,
+      })
+    : [];
+  let nextSmallAt: Date | null = null;
+  let nextBigAt: Date | null = null;
+
+  if (isTank && (result === 'done' || result === 'support')) {
     // Считаем РЕАЛЬНО списанное за скользящие сутки: ✅ только. ⚠️ и 💀 денег
     // не тратят (платёж отклонён / waiver вместо списания) — см. CLAUDE.md.
     const charged = await db
@@ -751,34 +776,26 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
           gte(purchases.purchasedAt, new Date(Date.now() - 24 * 3600 * 1000)),
         ),
       );
-    // Фаза цикла: день от ПЕРВОЙ покупки на телефоне и были ли боевые суммы.
-    // Нужно, чтобы на свежем телефоне не предлагать тридцатки: по деньгам они
-    // проходят, но по протоколу там ещё разогрев.
-    const st = before[0];
-    const firstDay = st?.first_day ?? null;
-    const dayOfCycle = firstDay ? cycleDayMsk(firstDay) : null;
-
-    // Разбор отклонений — по состоянию ДО этой покупки. Сначала говорим,
-    // что произошло, потом — что делать дальше.
-    const anomalies = classifyPurchase({
-      amount: Number(amount),
-      result,
-      gapH: st?.gap_h == null ? null : Number(st.gap_h),
-      spent24: Number(st?.spent24 ?? 0),
-      dayOfCycle,
-      hadBattleBefore: Boolean(st?.had_battle),
-      internet,
-      isPro,
-      isTank: true,
-    });
+    // Сначала говорим, что произошло, потом — что делать дальше.
     const aLines = anomalyLines(anomalies);
     if (aLines.length > 0) parts.push('', ...aLines);
 
+    const nowD = new Date();
+    const charges = charged.map((c) => ({ at: new Date(c.at), amount: Number(c.amount) }));
+    // Для журнала: с какого часа по ПРАВИЛАМ БЕЗОПАСНОСТИ можно следующую €30 / €100.
+    // После ⚠️ — отлёжка, денег не списано. Стратегию (разогрев, «лучше сотню»)
+    // здесь не учитываем: журнал меряет соблюдение правил, а не советов.
+    if (result === 'support') {
+      nextSmallAt = nextBigAt = new Date(nowD.getTime() + SUPPORT_REST_H * 3600 * 1000);
+    } else {
+      nextSmallAt = allowedAt(charges, SMALL_EUR, nowD, isPro);
+      nextBigAt = allowedAt(charges, BIG_EUR, nowD, isPro);
+    }
     parts.push(
       '',
       ...nextPurchaseHint({
-        now: new Date(),
-        charges: charged.map((c) => ({ at: new Date(c.at), amount: Number(c.amount) })),
+        now: nowD,
+        charges,
         result,
         orderStillOpen: Boolean(orderId && orderStillOpen),
         dayOfCycle,
@@ -786,6 +803,25 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
         isPro,
       }),
     );
+  }
+
+  // Журнал подсказок (advice_log, 0016): что бот сказал по этой покупке.
+  // Пишем на ПОСЛЕДНЮЮ строку записи (у мультизакупа результат несёт она).
+  // ⚠️ Сбой журнала НЕ должен ломать запись покупки: она уже в базе, а сообщение
+  // об ошибке спровоцировало бы оператора ввести её второй раз. Только лог.
+  if (isTank) {
+    try {
+      await db.insert(adviceLog).values({
+        purchaseId: inserted[inserted.length - 1]!.id,
+        phoneId,
+        anomalies: anomalies.map((a) => ({ code: a.code, severity: a.severity })),
+        nextSmallAt,
+        nextBigAt,
+        rules: RULES_VERSION,
+      });
+    } catch (err) {
+      console.error('Журнал подсказок не записан:', err);
+    }
   }
 
   // При 💀 и 🔐 — цикл закончен (триггер перевёл телефон в dead). «Надгробие».

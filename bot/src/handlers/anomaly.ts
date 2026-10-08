@@ -27,7 +27,23 @@ import {
 
 export type Severity = 'danger' | 'observation' | 'note';
 
+/**
+ * Постоянный код отклонения — для журнала подсказок (advice_log, 0016).
+ * Тексты сообщений меняются (07.10.2026 из них убрали вшитые числа), а
+ * статистика по журналу должна считаться годами — поэтому по коду, не по тексту.
+ * ⚠️ Коды НЕ переименовывать: в журнале уже лежат старые значения.
+ */
+export type AnomalyCode =
+  | 'money-cell'
+  | 'floor-weak'
+  | 'short-gap'
+  | 'early-battle'
+  | 'long-warmup'
+  | 'overdue'
+  | 'mobile-big';
+
 export interface Anomaly {
+  code: AnomalyCode;
   severity: Severity;
   /** Что именно произошло. */
   text: string;
@@ -71,6 +87,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
   // 1. Опасная клетка расклада: короткий интервал И крупная сумма за сутки.
   if (short && total >= DANGER_EUR) {
     out.push({
+      code: 'money-cell',
       severity: 'danger',
       // ⚠️ Точную статистику здесь НЕ пишем. Она меняется с каждой покупкой,
       // а зашитое в строку число молча разойдётся с данными (уже расходилось:
@@ -85,6 +102,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
     // Все три смерти в «безопасной» по деньгам клетке случились именно здесь
     // (…1817 3.1 ч, …0166 6.8 ч, …9445 3.2 ч) и все на не-Pro.
     out.push({
+      code: 'floor-weak',
       severity: 'danger',
       text:
         `интервал ${gap} ч на не-Pro аппарате — здесь деньги не защищают: ` +
@@ -94,6 +112,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
     // 2b. Короткий интервал при малых деньгах — та самая неизученная зона.
     // На Pro она пока чистая (26 попыток, 0 смертей), поэтому наблюдение.
     out.push({
+      code: 'short-gap',
       severity: 'observation',
       text: `интервал ${gap} ч (норма ≥ ${CORRIDOR_MIN_H} ч), сумма за 24 ч €${total}`,
       learn: 'записал как наблюдение — если телефон выживет, это довод сдвинуть границу',
@@ -103,6 +122,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
   // 3. Боевая покупка раньше конца разогрева.
   if (f.amount >= SMALL_BATTLE && f.dayOfCycle != null && f.dayOfCycle <= WARMUP_DAYS) {
     out.push({
+      code: 'early-battle',
       severity: 'danger',
       text:
         `боевая покупка на ${f.dayOfCycle}-й день (разогрев ${WARMUP_DAYS} дня) — ` +
@@ -116,6 +136,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
   // 4. Разогрев затянулся: боевых ещё не было, а дни идут.
   if (!f.hadBattleBefore && f.amount < SMALL_BATTLE && f.dayOfCycle != null && f.dayOfCycle > WARMUP_DAYS) {
     out.push({
+      code: 'long-warmup',
       severity: 'note',
       text: `разогрев идёт ${f.dayOfCycle}-й день вместо ${WARMUP_DAYS} — окно жизни тратится на €2`,
     });
@@ -126,6 +147,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
   // иначе сводка и сообщение после покупки назвали бы разные дни.
   if (f.dayOfCycle != null && withdrawStage(f.dayOfCycle - 1) === 'due') {
     out.push({
+      code: 'overdue',
       severity: 'note',
       text: `${f.dayOfCycle - 1}-й день цикла — вывод бюджета просрочен`,
     });
@@ -139,6 +161,7 @@ export function classifyPurchase(f: PurchaseFacts): Anomaly[] {
   // может учиться, если её вывод заморожен в тексте. Цифры — в /learn, живые.
   if (f.amount >= BIG && f.internet === 'mobile') {
     out.push({
+      code: 'mobile-big',
       severity: 'observation',
       text: `€${f.amount} через мобильный интернет — по истории он рискованнее Wi-Fi (цифры — /learn)`,
       learn: 'каждое такое наблюдение уточняет, насколько мобильный хуже Wi-Fi',

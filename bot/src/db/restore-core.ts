@@ -31,6 +31,8 @@ export interface BackupData {
   phones: Row[];
   purchases: Row[];
   order_queue: Row[];
+  /** Журнал подсказок (миграция 0016). В дампах до 07.10.2026 его нет. */
+  advice_log?: Row[];
 }
 
 /**
@@ -46,6 +48,7 @@ export const RESTORE_ORDER = [
   'order_queue',
   'phones',
   'purchases',
+  'advice_log', // ссылается на покупки и телефоны — последним
 ] as const;
 
 // Вставка массива строк одним запросом. jsonb_populate_recordset сам приводит
@@ -86,7 +89,8 @@ async function insertRows(db: Exec, table: string, rows: Row[]): Promise<number>
 export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<string, number>> {
   const busy = await db.query(
     `select (select count(*) from users)::int + (select count(*) from phones)::int
-          + (select count(*) from purchases)::int + (select count(*) from order_queue)::int as n`,
+          + (select count(*) from purchases)::int + (select count(*) from order_queue)::int
+          + (select count(*) from advice_log)::int as n`,
   );
   if (Number(busy.rows[0]?.n) > 0) {
     throw new Error('База не пустая — восстановление делается только в чистую базу.');
@@ -101,7 +105,10 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
     for (const t of RESTORE_ORDER) {
       // Ловушка 3 (часть 1): ссылку на «убившую» покупку пока не ставим —
       // самих покупок ещё нет, внешний ключ не пустит.
-      const rows = t === 'phones' ? data.phones.map((p) => ({ ...p, death_purchase_id: null })) : data[t];
+      const rows =
+        t === 'phones'
+          ? data.phones.map((p) => ({ ...p, death_purchase_id: null }))
+          : (data[t] ?? []); // старые дампы без advice_log — просто пусто
       done[t] = await insertRows(db, t, rows);
     }
 
@@ -124,6 +131,8 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
     await db.query(
       `select setval('order_queue_num_seq', (select coalesce(max(num), 1) from order_queue))`,
     );
+    // То же для журнала подсказок — иначе следующая запись упрётся в занятый id.
+    await db.query(`select setval('advice_log_id_seq', (select coalesce(max(id), 1) from advice_log))`);
 
     await db.query('commit');
     return done;

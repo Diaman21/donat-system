@@ -84,12 +84,16 @@ const fixture: BackupData = {
     { id: 'e0000000-0000-4000-8000-0000000000a4', phone_id: PH_ACTIVE, operator_id: U2, category_id: CAT_VK, amount: '3.99', result: 'done', game: null, internet: 'wifi', units: 40, order_queue_id: null, idem_key: 'k3:0', purchased_at: ts('07'), notes: null, created_at: ts('07'), updated_at: ts('07') },
     { id: 'e0000000-0000-4000-8000-0000000000a5', phone_id: PH_ACTIVE, operator_id: U2, category_id: CAT_VK, amount: '3.99', result: 'support', game: null, internet: 'wifi', units: 40, order_queue_id: null, idem_key: 'k3:1', purchased_at: ts('07'), notes: null, created_at: ts('07'), updated_at: ts('07') },
   ],
+  // Журнал подсказок (0016): одна запись с jsonb-массивом и временами.
+  advice_log: [
+    { id: 7, created_at: ts('06'), purchase_id: P_VERIFY, phone_id: PH_VERIFY, anomalies: [{ code: 'mobile-big', severity: 'observation' }], next_small_at: null, next_big_at: null, rules: '2026-10-06' },
+  ],
 };
 
 test('восстановление: все миграции поднимаются, бэкап встаёт без ошибок', async () => {
   const pg = await freshDb();
   const done = await restoreBackup(pg, fixture);
-  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6 });
+  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1 });
 });
 
 test('восстановление: трудные случаи на месте', async () => {
@@ -116,6 +120,9 @@ test('восстановление: трудные случаи на месте'
   assert.equal((await one(`select items->'list'->0->>'label' l from order_queue`)).l, 'вип год');
   // Счётчик номеров: следующий заказ получит #42.
   assert.equal((await one(`select nextval('order_queue_num_seq')::int n`)).n, 42);
+  // Журнал: jsonb цел, счётчик id после максимального.
+  assert.equal((await one(`select anomalies->0->>'code' c from advice_log`)).c, 'mobile-big');
+  assert.equal((await one(`select nextval('advice_log_id_seq')::int n`)).n, 8);
   // Защита от дубля работает и после восстановления.
   await assert.rejects(
     pg.query(`insert into purchases (phone_id, operator_id, category_id, amount, result, idem_key)
@@ -146,4 +153,12 @@ test('восстановление: ошибка посреди — откат �
   await assert.rejects(restoreBackup(pg, broken));
   const n = (await pg.query(`select (select count(*) from users) + (select count(*) from phones) as n`)).rows[0];
   assert.equal(Number((n as { n: unknown }).n), 0);
+});
+
+test('восстановление: дамп до 07.10.2026 (без advice_log) встаёт без правки', async () => {
+  const pg = await freshDb();
+  const { advice_log: _drop, ...old } = fixture;
+  const done = await restoreBackup(pg, old as BackupData);
+  assert.equal(done.advice_log, 0);
+  assert.equal(done.purchases, 6);
 });
