@@ -8,6 +8,7 @@ import { env } from '../config.js';
 import { inTopic } from '../group.js';
 import { mskTodayIso, daysBetweenIso, addDaysIso, ddmmOf } from '../format.js';
 import { WITHDRAW_DAYS, withdrawStage, type WithdrawStage } from './interval.js';
+import { cardSummaryLines } from './card.js';
 
 export type StatsPeriod = 'all' | '24h' | '7d';
 export const STATS_CB = 'stats:'; // + all|24h|7d
@@ -291,18 +292,32 @@ export async function renderStats(
   return { text, kb: periodKeyboard(period) };
 }
 
+// Блок «💳 бюджет на карте» снизу — в /stats и /report (10.10.2026).
+// Не внутри renderStats: её же зовёт ежедневная сводка, где блок карты стоит
+// отдельно, — иначе он вышел бы там дважды. Сбой карты статистику не ломает.
+async function withCard(text: string): Promise<string> {
+  try {
+    const card = await cardSummaryLines();
+    return card.length ? `${text}\n\n${card.join('\n')}` : text;
+  } catch (err) {
+    console.error('Блок бюджета карты не собран:', err);
+    return text;
+  }
+}
+
 // «📊 Статистика» / /stats — сводка с переключателем периода.
 export async function showStats(ctx: AppContext): Promise<void> {
   if (!(await requireOperator(ctx))) return;
   const { text, kb } = await renderStats('all');
-  await ctx.reply(text, { reply_markup: kb });
+  await ctx.reply(await withCard(text), { reply_markup: kb });
 }
 
 // Переключение периода (callback).
 // Роль проверяем и здесь: в группе кнопки видны всем участникам.
 export async function onStatsPeriod(ctx: AppContext, period: StatsPeriod): Promise<void> {
   if (!(await requireOperator(ctx))) return;
-  const { text, kb } = await renderStats(period);
+  const { text: raw, kb } = await renderStats(period);
+  const text = await withCard(raw);
   try {
     await ctx.editMessageText(text, { reply_markup: kb });
   } catch {
@@ -317,7 +332,7 @@ export async function sendReportToGroup(ctx: AppContext): Promise<void> {
     await ctx.reply('Группа не настроена (нет TELEGRAM_GROUP_ID).');
     return;
   }
-  const { text } = await renderStats('7d');
+  const text = await withCard((await renderStats('7d')).text);
   try {
     await ctx.api.sendMessage(env.groupChatId, text, inTopic('summary'));
     await ctx.reply('✅ Отчёт отправлен в группу.');
