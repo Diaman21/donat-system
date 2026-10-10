@@ -9,6 +9,7 @@ import {
   idleLines,
 } from '../src/handlers/corridor.js';
 import { weeklyLines } from '../src/handlers/weekly.js';
+import { cardSummaryLines } from '../src/handlers/card.js';
 import { notifyModerator } from '../src/notify.js';
 
 // Vercel Cron: ежедневная сводка в группу.
@@ -83,12 +84,14 @@ export default async function handler(req: any, res: any): Promise<void> {
     // запросов к Neon, а функция на Vercel ограничена по времени: если она
     // не успеет, сводка за день просто не придёт. Последовательный сбор
     // тратил бы секунды на ожидание сети впустую.
-    const [violations, idle, shift, phonesNow, weekly, stats] = await Promise.all([
+    const [violations, idle, shift, card, phonesNow, weekly, stats] = await Promise.all([
       violationsLines(24),
       // Пусто, пока никто не простаивает дольше порога.
       idleLines(),
       // Пусто, пока ни одна граница не накопила достаточно чистых наблюдений.
       boundaryShiftLines(),
+      // Бюджет на карте: по нему решают, выкатывать ли телефон (с 10.10.2026).
+      cardSummaryLines(),
       phonesNowLines(),
       // По понедельникам — итог прошедшей недели. В остальные дни пусто.
       weeklyLines(),
@@ -103,6 +106,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       // 39 слотов из 78 — больше, чем принесли все тридцатки за период.
       ...(idle.length ? ['', ...idle] : []),
       ...(shift.length ? ['', ...shift] : []),
+      ...(card.length ? ['', ...card] : []),
       '',
       ...phonesNow,
       ...(weekly.length ? ['', ...weekly] : []),

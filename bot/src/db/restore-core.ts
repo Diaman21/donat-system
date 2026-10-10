@@ -33,6 +33,8 @@ export interface BackupData {
   order_queue: Row[];
   /** Журнал подсказок (миграция 0016). В дампах до 07.10.2026 его нет. */
   advice_log?: Row[];
+  /** Журнал карты (миграция 0017). В дампах до 10.10.2026 его нет. */
+  card_ledger?: Row[];
 }
 
 /**
@@ -48,7 +50,8 @@ export const RESTORE_ORDER = [
   'order_queue',
   'phones',
   'purchases',
-  'advice_log', // ссылается на покупки и телефоны — последним
+  'advice_log', // ссылается на покупки и телефоны
+  'card_ledger', // ссылается на телефоны и пользователей
 ] as const;
 
 // Вставка массива строк одним запросом. jsonb_populate_recordset сам приводит
@@ -90,7 +93,7 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
   const busy = await db.query(
     `select (select count(*) from users)::int + (select count(*) from phones)::int
           + (select count(*) from purchases)::int + (select count(*) from order_queue)::int
-          + (select count(*) from advice_log)::int as n`,
+          + (select count(*) from advice_log)::int + (select count(*) from card_ledger)::int as n`,
   );
   if (Number(busy.rows[0]?.n) > 0) {
     throw new Error('База не пустая — восстановление делается только в чистую базу.');
@@ -108,7 +111,7 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
       const rows =
         t === 'phones'
           ? data.phones.map((p) => ({ ...p, death_purchase_id: null }))
-          : (data[t] ?? []); // старые дампы без advice_log — просто пусто
+          : (data[t] ?? []); // старые дампы без advice_log / card_ledger — просто пусто
       done[t] = await insertRows(db, t, rows);
     }
 
@@ -133,6 +136,7 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
     );
     // То же для журнала подсказок — иначе следующая запись упрётся в занятый id.
     await db.query(`select setval('advice_log_id_seq', (select coalesce(max(id), 1) from advice_log))`);
+    await db.query(`select setval('card_ledger_id_seq', (select coalesce(max(id), 1) from card_ledger))`);
 
     await db.query('commit');
     return done;

@@ -11,6 +11,11 @@ export type FlowState =
   | { kind: 'find_phone_imei' }
   | { kind: 'order_text' }
   | { kind: 'report_custom_date' }
+  // Бюджет на карте (card.ts): сумма руками → вопросы про возвраты в пути
+  // (queue — кого ещё спросить, arrived — «уже на карте»), поправка возврата.
+  | { kind: 'card_balance' }
+  | { kind: 'card_balance_ask'; amount: number; at: string; queue: string[]; arrived: string[] }
+  | { kind: 'card_refund'; phoneId: string }
   | { kind: 'purchase_category'; phoneId: string }
   | { kind: 'purchase_game'; phoneId: string; categoryCode: string }
   | { kind: 'purchase_game_custom'; phoneId: string; categoryCode: string }

@@ -11,6 +11,7 @@ import { fmtMsk, fmtMskDate } from '../format.js';
 import { HIST_CB } from './history.js';
 import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
 import { imeiRepeatNotice } from './phone-dup.js';
+import { refundNoticeLine } from './card.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
 export const KILLC_CB = 'killc:'; // подтвердить вывод
@@ -447,9 +448,15 @@ export async function onKillConfirm(ctx: AppContext, phoneId: string): Promise<v
     return;
   }
   const pm = await buildPostMortem(phoneId);
-  await ctx.reply(`☠️ Телефон …${upd[0]!.imei} выведен из активных.\n\n${pm}`, {
-    reply_markup: mainMenu(),
+  // Сколько и когда вернётся на карту (card.ts). Сбой — не повод молчать о выводе.
+  const refund = await refundNoticeLine(phoneId).catch((err) => {
+    console.error('Строка возврата не собрана:', err);
+    return null;
   });
+  await ctx.reply(
+    `☠️ Телефон …${upd[0]!.imei} выведен из активных.\n\n${pm}${refund ? `\n\n${refund}` : ''}`,
+    { reply_markup: mainMenu() },
+  );
   // Короткий итог цикла — в группу: история циклов копится в чате.
   await postCycleToGroup(ctx.api, phoneId);
 }

@@ -7,6 +7,7 @@ import { mainMenu } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
+import { cardAfterPurchaseLine, refundNoticeLine } from './card.js';
 import { closeOrderIfDone, orderContext, ORD_CB } from './orders.js';
 import { nextPurchaseHint, allowedAt, SMALL_EUR, BIG_EUR, SUPPORT_REST_H } from './interval.js';
 import { RULES_VERSION } from './zones.js';
@@ -829,6 +830,20 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
   if (endsCycle) {
     const pm = await buildPostMortem(phoneId);
     if (pm) parts.push('', pm);
+  }
+
+  // Бюджет на карте (card.ts): после ✅ — сколько осталось, после конца цикла —
+  // сколько и когда вернётся. ⚠️ Как и журнал: сбой здесь не должен ломать
+  // ответ о записанной покупке (иначе оператор введёт её второй раз).
+  try {
+    const cardLine = endsCycle
+      ? await refundNoticeLine(phoneId)
+      : result === 'done'
+        ? await cardAfterPurchaseLine()
+        : null;
+    if (cardLine) parts.push('', cardLine);
+  } catch (err) {
+    console.error('Строка бюджета карты не собрана:', err);
   }
 
   // Инлайн-кнопку и reply-меню одновременно Telegram не отдаёт, поэтому при

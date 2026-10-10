@@ -38,6 +38,8 @@ export const BTN = {
   stats: '📊 Статистика',
   vk: '🗳 ВК',
   recent: '📋 Последние',
+  // Бюджет на карте (card.ts) — по нему решают, когда выкатывать телефон.
+  card: '💳 Бюджет на карте',
   report: '📅 Отчёт',
   delLast: '❌ Удалить последнюю',
 } as const;
@@ -64,6 +66,7 @@ export function mainMenu(): Keyboard {
     .text(BTN.recent)
     .row()
     .text(BTN.find)
+    .text(BTN.card)
     .row()
     .text(BTN.report)
     .text(BTN.delLast)

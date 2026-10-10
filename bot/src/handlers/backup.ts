@@ -11,7 +11,16 @@ import { db } from '../db/client.js';
 
 // Порядок важен: при восстановлении вставлять именно так (FK-зависимости).
 // advice_log (журнал подсказок, миграция 0016) — с 07.10.2026.
-const TABLES = ['users', 'purchase_categories', 'phones', 'purchases', 'order_queue', 'advice_log'] as const;
+// card_ledger (бюджет на карте, миграция 0017) — с 10.10.2026.
+const TABLES = [
+  'users',
+  'purchase_categories',
+  'phones',
+  'purchases',
+  'order_queue',
+  'advice_log',
+  'card_ledger',
+] as const;
 
 // bot_sessions не бэкапим — это временное состояние ввода, ценности нет.
 //

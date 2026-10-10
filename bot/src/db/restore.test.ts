@@ -88,12 +88,17 @@ const fixture: BackupData = {
   advice_log: [
     { id: 7, created_at: ts('06'), purchase_id: P_VERIFY, phone_id: PH_VERIFY, anomalies: [{ code: 'mobile-big', severity: 'observation' }], next_small_at: null, next_big_at: null, rules: '2026-10-06' },
   ],
+  // Журнал карты (0017): сумма руками и поправка возврата по умершему телефону.
+  card_ledger: [
+    { id: 3, kind: 'balance', amount_eur: '1240.50', phone_id: null, effective_at: ts('05'), created_by: U1, created_at: ts('05'), updated_at: ts('05') },
+    { id: 4, kind: 'refund', amount_eur: '28.00', phone_id: PH_DEAD, effective_at: ts('06'), created_by: U2, created_at: ts('06'), updated_at: ts('06') },
+  ],
 };
 
 test('восстановление: все миграции поднимаются, бэкап встаёт без ошибок', async () => {
   const pg = await freshDb();
   const done = await restoreBackup(pg, fixture);
-  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1 });
+  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1, card_ledger: 2 });
 });
 
 test('восстановление: трудные случаи на месте', async () => {
@@ -123,6 +128,20 @@ test('восстановление: трудные случаи на месте'
   // Журнал: jsonb цел, счётчик id после максимального.
   assert.equal((await one(`select anomalies->0->>'code' c from advice_log`)).c, 'mobile-big');
   assert.equal((await one(`select nextval('advice_log_id_seq')::int n`)).n, 8);
+  // Журнал карты: суммы с копейками, счётчик id, вторая поправка возврата
+  // по тому же телефону не пролезает (одна на телефон).
+  assert.equal((await one(`select amount_eur::text a from card_ledger where kind = 'balance'`)).a, '1240.50');
+  assert.equal((await one(`select nextval('card_ledger_id_seq')::int n`)).n, 5);
+  await assert.rejects(
+    pg.query(`insert into card_ledger (kind, amount_eur, phone_id, effective_at)
+              values ('refund', 1, '${PH_DEAD}', now())`),
+    /card_ledger_refund_uidx|unique/i,
+  );
+  // Поправка возврата без телефона — запрещена.
+  await assert.rejects(
+    pg.query(`insert into card_ledger (kind, amount_eur, effective_at) values ('refund', 1, now())`),
+    /card_ledger_refund_has_phone/,
+  );
   // Защита от дубля работает и после восстановления.
   await assert.rejects(
     pg.query(`insert into purchases (phone_id, operator_id, category_id, amount, result, idem_key)
@@ -155,10 +174,11 @@ test('восстановление: ошибка посреди — откат �
   assert.equal(Number((n as { n: unknown }).n), 0);
 });
 
-test('восстановление: дамп до 07.10.2026 (без advice_log) встаёт без правки', async () => {
+test('восстановление: дамп до 07.10.2026 (без advice_log и card_ledger) встаёт без правки', async () => {
   const pg = await freshDb();
-  const { advice_log: _drop, ...old } = fixture;
+  const { advice_log: _drop, card_ledger: _drop2, ...old } = fixture;
   const done = await restoreBackup(pg, old as BackupData);
   assert.equal(done.advice_log, 0);
+  assert.equal(done.card_ledger, 0);
   assert.equal(done.purchases, 6);
 });

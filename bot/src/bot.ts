@@ -59,6 +59,13 @@ import { showVkReport } from './handlers/vk.js';
 import { showCorridor } from './handlers/corridor.js';
 import { showLearn } from './handlers/learn.js';
 import {
+  showCard,
+  onCardCallback,
+  onCardBalanceText,
+  onCardRefundText,
+  CARD_CB,
+} from './handlers/card.js';
+import {
   startAddOrder,
   onOrderText,
   listOrders,
@@ -114,6 +121,7 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.command('vk', showVkReport);
   bot.command('corridor', showCorridor);
   bot.command('learn', showLearn);
+  bot.command('budget', showCard);
   bot.command('period', startReport);
   bot.command('phones', listPhones);
   bot.command('find', startFindPhone);
@@ -144,6 +152,7 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.hears(/Последние$/, showRecent);
   bot.hears(/Отчёт$/, startReport);
   bot.hears(/Удалить последнюю$/, startDeleteLast);
+  bot.hears(/Бюджет на карте$/, showCard);
 
   // Inline-callback'и
   bot.on('callback_query:data', async (ctx) => {
@@ -204,6 +213,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
           }
         }
         return;
+      }
+      if (data.startsWith(CARD_CB)) {
+        return void (await onCardCallback(ctx, data.slice(CARD_CB.length)));
       }
       if (data.startsWith(REP_CB)) {
         return void (await onReportCallback(ctx, data.slice(REP_CB.length)));
@@ -285,6 +297,10 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
         return onPurchaseNote(ctx, ctx.message.text);
       case 'report_custom_date':
         return onReportCustomDate(ctx, ctx.message.text);
+      case 'card_balance':
+        return onCardBalanceText(ctx, ctx.message.text);
+      case 'card_refund':
+        return onCardRefundText(ctx, ctx.message.text);
       default:
         await ctx.reply('Не понял. Открой меню: /start или /help.');
     }

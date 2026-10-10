@@ -118,6 +118,21 @@ export const adviceLog = pgTable('advice_log', {
   rules: text('rules').notNull(),
 });
 
+// ---------- card_ledger — журнал карты (миграция 0017) ----------
+// Баланс карты ВЫЧИСЛЯЕТСЯ (card-calc.ts), здесь — только то, что нельзя
+// вычислить: суммы, вбитые руками ('balance'), и поправки возвратов ('refund',
+// одна на телефон). Без поправки возврат = ✅ телефона через 48 ч после вывода.
+export const cardLedger = pgTable('card_ledger', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  kind: text('kind').notNull(), // 'balance' | 'refund'
+  amountEur: numeric('amount_eur', { precision: 12, scale: 2 }).notNull(),
+  phoneId: uuid('phone_id'),
+  effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull(),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- bot_sessions — состояние пошагового ввода (grammy session) ----------
 // Нужно для serverless (Vercel): память между запросами не сохраняется.
 export const botSessions = pgTable('bot_sessions', {
