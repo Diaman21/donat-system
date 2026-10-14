@@ -9,6 +9,7 @@ import { parsePhoneModel, modelGroup } from './phone-model.js';
 import { asDeathReason, BY_APPLE } from './death.js';
 import { cycleDayMsk } from '../format.js';
 import { WARMUP_DAYS } from './interval.js';
+import { verifyTrend, VERIFY_SINCE, VERIFY_MIN_EUR } from './verify-trend.js';
 
 // «/learn» — чему научилась система. Добавлено 07.10.2026 по итогам аудита.
 //
@@ -198,6 +199,29 @@ export async function learnLines(now: Date = new Date()): Promise<string[]> {
       `   раньше разрешённого: ${early.length} · 💀/🔐 ${bad(early)} · ${fmtRate(bad(early), early.length)}`,
     );
   }
+  out.push('');
+
+  // ---------- 7. 🔐 «проверка данных» — динамика ----------
+  // Только счёт, без гипотез: первые гипотезы опровергли следующие же случаи
+  // (verify-trend.ts). Отдельно — соблюдали ли правила коридора: если 🔐 идёт
+  // и при чистом протоколе, темп покупок его не объясняет.
+  const vt = verifyTrend(all, PROTOCOL_SINCE, now);
+  const vLine = (n: number, v: number) => `${n} поп · 🔐 ${v} · ${fmtRate(v, n)}`;
+  const afterAtt = att.filter((a) => a.amt >= VERIFY_MIN_EUR && Date.parse(a.at) >= mskStart(VERIFY_SINCE));
+  const breaks = (a: A) => RULES.some((r) => r.violates(a, isPro(a.label)));
+  const vCount = (xs: A[]) => xs.filter((a) => a.res === 'verify').length;
+  const clean = afterAtt.filter((a) => !breaks(a));
+  const dirty = afterAtt.filter(breaks);
+  out.push(
+    `7️⃣ 🔐 проверка данных — крупные (€${VERIFY_MIN_EUR}+)`,
+    `   до ${ddmm(VERIFY_SINCE)} (с протокола): ${vLine(vt.before.n, vt.before.verify)}`,
+    `   с ${ddmm(VERIFY_SINCE)}: ${vLine(vt.after.n, vt.after.verify)}`,
+    ...vt.weeks.map((w) => `      ${ddmm(w.from)}–${ddmm(w.to)}: ${vLine(w.n, w.verify)}`),
+    `   с ${ddmm(VERIFY_SINCE)} по правилам коридора: ${vLine(clean.length, vCount(clean))}`,
+    `   с ${ddmm(VERIFY_SINCE)} с нарушением: ${vLine(dirty.length, vCount(dirty))}`,
+    '   Причина неизвестна — разбор случаев в docs/history.md.',
+  );
+
   out.push('', '⚖️ Границы и правила меняет человек. Широкий диапазон = данных мало, выводы рано.');
   return out;
 }
