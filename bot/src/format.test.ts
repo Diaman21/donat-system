@@ -14,6 +14,7 @@ import {
   fmtMskDate,
   isMondayMsk,
   cycleDayMsk,
+  agoText,
 } from './format.js';
 
 // Тесты на календарь МСК.
@@ -225,4 +226,20 @@ test('cycleDayMsk: растёт ровно на 1 за сутки, 14 дней �
     const at = new Date(first.getTime() + i * 86_400_000);
     assert.equal(cycleDayMsk(first, at), i + 1, `сутки ${i}`);
   }
+});
+
+// ---------- «сколько прошло» для «☎️ Телефоны» ----------
+
+test('agoText: минуты, часы, дни — без нулевых хвостов', () => {
+  const now = new Date('2026-10-16T12:00:00Z');
+  const ago = (min: number) => agoText(new Date(now.getTime() - min * 60000), now);
+  assert.equal(ago(0), 'только что');
+  assert.equal(ago(-30), 'только что'); // момент «в будущем» — не отрицательное число
+  assert.equal(ago(12), '12 мин');
+  assert.equal(ago(60), '1 ч');
+  assert.equal(ago(5 * 60 + 12), '5 ч 12 мин');
+  assert.equal(ago(23 * 60 + 59), '23 ч 59 мин');
+  assert.equal(ago(24 * 60), '1 дн');
+  assert.equal(ago(51 * 60 + 40), '2 дн 3 ч'); // минуты после суток не показываем
+  assert.equal(agoText('2026-10-16T09:00:00Z', now), '3 ч'); // строка из БД
 });

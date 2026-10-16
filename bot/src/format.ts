@@ -113,6 +113,22 @@ export function ddmmOf(iso: string): string {
   return `${p[2]}.${p[1]}`;
 }
 
+/**
+ * Сколько прошло с момента: «12 мин», «5 ч 12 мин», «23 ч», «2 дн 3 ч».
+ * Для «☎️ Телефоны»: протокол меряет интервал между покупками в часах (22–28 ч),
+ * поэтому до суток — часы с минутами, дальше — дни с часами. Момент в будущем
+ * (часы сервера и ввода разошлись) — «только что», а не отрицательное число.
+ */
+export function agoText(from: Date | string | number, now: Date = new Date()): string {
+  const min = Math.floor((now.getTime() - new Date(from).getTime()) / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return min % 60 ? `${h} ч ${min % 60} мин` : `${h} ч`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d} дн ${h % 24} ч` : `${d} дн`;
+}
+
 /** Время суток по МСК: «16:21». Принимает Date или строку из БД. */
 export function hhmmMsk(at: Date | string | number): string {
   const x = new Date(new Date(at).getTime() + MSK_OFFSET_MS);

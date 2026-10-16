@@ -1,13 +1,14 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
-import { phones, purchases } from '../db/schema.js';
+import { phones, purchases, type PurchaseResultValue } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 import { mainMenu, PHONE_MARK, PHONE_STATE } from './menus.js';
 import { requireOperator } from './start.js';
 import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
-import { fmtMsk, fmtMskDate } from '../format.js';
+import { fmtMsk, fmtMskDate, agoText } from '../format.js';
+import { RES_MARK } from './corridor.js';
 import { HIST_CB } from './history.js';
 import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
 import { imeiRepeatNotice } from './phone-dup.js';
@@ -388,6 +389,33 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     .groupBy(purchases.phoneId);
   const byPhone = new Map(stats.map((s) => [s.phoneId, s]));
 
+  // Последняя покупка каждого активного телефона (16.10.2026, просьба владельца):
+  // что и когда — чтобы интервал по протоколу (22–28 ч) был виден сразу.
+  // Мультизакуп пишется строками с ОДНИМ временем — показываем серию целиком
+  // (n), а результатом — неуспешный, если он в серии есть (он всегда последний).
+  const lastRows = (await db.execute(sql`
+    select distinct on (p.phone_id) p.phone_id, p.purchased_at at, p.amount::text amount,
+      p.game, c.code,
+      (select count(*) from purchases q
+        where q.phone_id = p.phone_id and q.purchased_at = p.purchased_at)::int n,
+      (select q.result::text from purchases q
+        where q.phone_id = p.phone_id and q.purchased_at = p.purchased_at
+        order by (q.result = 'done') limit 1) res
+    from purchases p
+    join purchase_categories c on c.id = p.category_id
+    join phones ph on ph.id = p.phone_id and ph.status = 'active'
+    order by p.phone_id, p.purchased_at desc, p.created_at desc`)) as unknown as {
+    phone_id: string;
+    at: string;
+    amount: string;
+    game: string | null;
+    code: string;
+    n: number;
+    res: PurchaseResultValue;
+  }[];
+  const lastBy = new Map(lastRows.map((r) => [r.phone_id, r]));
+  const now = new Date();
+
   // Кнопки вывода — только в личке (в группе список только для просмотра)
   const allowKill = ctx.chat?.type === 'private';
 
@@ -401,6 +429,17 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     lines.push(
       `📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок · 🗓 в работе с ${fmtMskDate(p.connectedAt)}`,
     );
+    const last = lastBy.get(p.id);
+    if (last) {
+      const what = last.code === 'vk_votes' ? 'ВК' : (last.game ?? 'танки');
+      const sum = `${Number(last.n) > 1 ? `${last.n}×` : ''}€${Number(last.amount)}`;
+      const mark = RES_MARK[last.res] ?? last.res;
+      lines.push(
+        `   🕒 последняя: ${what} ${sum} ${mark} · ${fmtMsk(new Date(last.at))} (${agoText(last.at, now)} назад)`,
+      );
+    } else {
+      lines.push('   🕒 покупок ещё не было');
+    }
     if ((s?.furBig ?? 0) > 0) lines.push('   ❗️ Furious €105 уже был — второй не делать');
     // у каждого: подробная инфо (история+разбивка) и вывод
     kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);

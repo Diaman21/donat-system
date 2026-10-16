@@ -13,7 +13,7 @@ import { fmtRate } from './stats-math.js';
 
 // Значок результата. Record, а не тернарник «long ? 💀 : support ? ⚠️ : ✅» —
 // тот показал бы новый результат 🔐 verify как успешную покупку.
-const RES_MARK: Record<PurchaseResultValue, string> = {
+export const RES_MARK: Record<PurchaseResultValue, string> = {
   done: '✅',
   support: '⚠️',
   long: '💀',
