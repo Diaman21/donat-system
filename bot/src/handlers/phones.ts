@@ -9,6 +9,9 @@ import { cancelKb, CANCEL_CB, requirePrivate } from './common.js';
 import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate, agoText } from '../format.js';
 import { RES_MARK } from './corridor.js';
+import { loadActivePhones } from './slot-notify.js';
+import { phoneSlot, type Phase, type PhoneSlot } from './slots.js';
+import { BIG_EUR, SMALL_EUR, WARMUP_DAYS, WITHDRAW_DAYS } from './interval.js';
 import { HIST_CB } from './history.js';
 import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
 import { imeiRepeatNotice } from './phone-dup.js';
@@ -414,40 +417,76 @@ export async function listPhones(ctx: AppContext): Promise<void> {
     res: PurchaseResultValue;
   }[];
   const lastBy = new Map(lastRows.map((r) => [r.phone_id, r]));
+  // Что и когда можно по правилам коридора — та же логика, что у напоминаний
+  // о слотах и подсказки после покупки (slots.ts → interval.ts).
+  const slotBy = new Map((await loadActivePhones()).map((p) => [p.id, p]));
   const now = new Date();
 
   // Кнопки вывода — только в личке (в группе список только для просмотра)
   const allowKill = ctx.chat?.type === 'private';
 
+  // Вид (19.10.2026, просьба владельца: «информация сливается»): телефоны
+  // разделены линией, название — жирным заглавными (крупнее шрифт в Telegram
+  // не сделать), последняя покупка — жирным, ниже — сколько ждать слота.
+  // Разметка HTML, поэтому всё, что ввели люди (метка), экранируем.
+  const LINE = '━━━━━━━━━━━━━━━━━━';
   const lines: string[] = [];
   const kb = new InlineKeyboard();
   for (const p of active) {
     const s = byPhone.get(p.id);
     const cnt = s?.cnt ?? 0;
-    const total = s?.total ?? '0';
-    const label = p.label ? ` «${p.label}»` : '';
+    const total = Number(s?.total ?? 0);
+    const label = p.label ? ` «${escHtml(p.label.toUpperCase())}»` : '';
+    const st = slotBy.get(p.id);
+    const slot = st ? phoneSlot(st, now) : null;
+    const dayTxt = slot?.day ? ` · прошло ${slot.day - 1} из ${WITHDRAW_DAYS} дн` : '';
     lines.push(
-      `📱 …${p.imeiLast4}${label} — €${total} за ${cnt} покупок · 🗓 в работе с ${fmtMskDate(p.connectedAt)}`,
+      LINE,
+      `<b>📱 …${p.imeiLast4}${label}</b>`,
+      `€${total} · ${cnt} ${purchasesWord(cnt)} · в работе с ${fmtMskDate(p.connectedAt)}${dayTxt}`,
     );
     const last = lastBy.get(p.id);
     if (last) {
-      const what = last.code === 'vk_votes' ? 'ВК' : (last.game ?? 'танки');
+      const what = last.code === 'vk_votes' ? 'ВК' : escHtml(last.game ?? 'танки');
       const sum = `${Number(last.n) > 1 ? `${last.n}×` : ''}€${Number(last.amount)}`;
       const mark = RES_MARK[last.res] ?? last.res;
       lines.push(
-        `   🕒 последняя: ${what} ${sum} ${mark} · ${fmtMsk(new Date(last.at))} (${agoText(last.at, now)} назад)`,
+        `🕒 <b>Последняя: ${what} ${sum} ${mark} · ${fmtMsk(new Date(last.at))}</b> (${agoText(last.at, now)} назад)`,
       );
-    } else {
-      lines.push('   🕒 покупок ещё не было');
     }
-    if ((s?.furBig ?? 0) > 0) lines.push('   ❗️ Furious €105 уже был — второй не делать');
+    if (slot) lines.push(slotLine(slot, now));
+    if ((s?.furBig ?? 0) > 0) lines.push('❗️ Furious €105 уже был — второй не делать');
     // у каждого: подробная инфо (история+разбивка) и вывод
     kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);
     if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`);
     kb.row();
   }
+  lines.push(LINE);
 
-  await ctx.reply(['Активные телефоны:', '', ...lines].join('\n'), { reply_markup: kb });
+  await ctx.reply(['<b>☎️ Телефоны в работе</b>', ...lines].join('\n'), {
+    reply_markup: kb,
+    parse_mode: 'HTML',
+  });
+}
+
+const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** «можно сейчас» или «через 16 ч 50 мин (20.10 08:02)». */
+function whenText(t: Date, now: Date): string {
+  // agoText меряет «от первого момента до второго» — здесь от сейчас до слота.
+  return t.getTime() <= now.getTime() ? 'можно сейчас' : `через ${agoText(now, t)} (${fmtMsk(t)})`;
+}
+
+/** Строка «что и когда можно» под телефоном — по фазе цикла. */
+function slotLine(slot: PhoneSlot, now: Date): string {
+  const byPhase: Record<Phase, () => string> = {
+    fresh: () => '🔥 Покупок ещё не было — начать разогрев €2',
+    warmup: () => `🔥 Разогрев: день ${slot.day} из ${WARMUP_DAYS} · €2 раз в сутки`,
+    due: () => `‼️ Прошло ${WITHDRAW_DAYS} дней — пора выводить, не покупать`,
+    battle: () =>
+      `⏳ €${BIG_EUR} — ${whenText(slot.bigAt!, now)} · €${SMALL_EUR} — ${whenText(slot.smallAt!, now)}`,
+  };
+  return byPhase[slot.phase]();
 }
 
 // Спросить подтверждение ручного вывода телефона.
@@ -498,4 +537,14 @@ export async function onKillConfirm(ctx: AppContext, phoneId: string): Promise<v
   );
   // Короткий итог цикла — в группу: история циклов копится в чате.
   await postCycleToGroup(ctx.api, phoneId);
+}
+
+/** «1 покупка», «3 покупки», «12 покупок». */
+function purchasesWord(n: number): string {
+  const last = n % 10;
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 14) return 'покупок';
+  if (last === 1) return 'покупка';
+  if (last >= 2 && last <= 4) return 'покупки';
+  return 'покупок';
 }

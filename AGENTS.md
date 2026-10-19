@@ -22,7 +22,11 @@
   Везде ❌ Отмена и `/cancel`. После записи — подсказка «когда можно следующую» (танки).
 - **Телефон:** 4 цифры IMEI + метка → «▶️ В работу» (≤3 активных, триггер БД) или
   «🧰 В подготовленные» (резерв вне лимита). Модель аппарата берётся из метки.
-  «☎️ Телефоны» — у каждого активного последняя покупка и сколько с неё прошло.
+  «☎️ Телефоны» — карточки через линию: название жирным, последняя покупка, «⏳ €100 — через…».
+- **⏰ Напоминания о слотах под €100** (с 19.10.2026): в тему 📥 Заказы с тегами команды,
+  только при открытых заказах, 09:00–24:00 МСК, одно на слот (`slots.ts`, `slot-notify.ts`).
+  Дёргает **cron-job.org** каждые 10 мин → `/api/cron-slots` с отдельным `SLOTS_SECRET`
+  (кроны Vercel Hobby — раз в сутки). Нет секрета — будильник выключен.
 - **Заказы** (`order_queue`) — главный вход: `📥 Заказы`, `✅ Выполнить` запускает ту же
   цепочку закупки (короче: без категории и игры). Завести: кнопкой, `/order <текст>`
   (работает и в группе), `/order`. Заказ может требовать несколько закупок
@@ -157,7 +161,7 @@ TypeScript + grammY · Vercel Hobby (webhook, 2 крона). Роли: `customer
   тогда попадает в безопасную ветку.
 - Время и календарь МСК — **только** `format.ts` (`cycleDayMsk`: день 1 = день первой покупки).
 - Тесты — только чистая логика без `db/client.ts`/`config.ts`; страж `test-hygiene.test.ts`.
-  `npm test` (node --test + tsx), **177 тестов**; `restore.test.ts` поднимает миграции в PGlite.
+  `npm test` (node --test + tsx), **182 теста**; `restore.test.ts` поднимает миграции в PGlite.
 - Нигде нет `select()` без проекции по `purchases` — удаление колонки не ломает деплой.
 - Блоки сводки — в одном `Promise.all` (таймаут функции = единственная тихая потеря).
 - Vercel: импорты с `.js`, `webhookCallback(..., 'https')`, `vercel.json` формата
@@ -176,7 +180,8 @@ donat-system/
 ├── supabase/migrations/    0001…0017, применяются вручную
 ├── .github/workflows/      CI: typecheck + npm test
 └── bot/
-    ├── api/                webhook · cron-report (+ ?dry=1 — проверка) · cron-export
+    ├── api/                webhook · cron-report (+ ?dry=1 — проверка) · cron-export ·
+    │                       cron-slots (будильник cron-job.org, + ?dry=1)
     ├── vercel.json         functions + 2 crons (12:00 и 12:05 МСК, точность ±59 мин)
     └── src/
         ├── bot.ts · context.ts · commands.ts · format.ts · group.ts · config.ts
@@ -186,12 +191,12 @@ donat-system/
                             zones · learn · stats-math · corridor · weekly · stats · vk ·
                             report · history · recent · postmortem · export · backup ·
                             death · money · idem · phone-dup · phone-model · card · card-calc ·
-                            verify-trend · menus · help
+                            verify-trend · slots · slot-notify · menus · help
 ```
 > ⚠️ `AGENTS.md` не править руками — после правки `CLAUDE.md` пересобрать (команда — в
 > `docs/HANDOFF.md`).
 
-## 9. Текущее состояние (14.10.2026)
+## 9. Текущее состояние (19.10.2026)
 
 - Миграции `0001`…`0017` применены. Таблиц восемь: users · purchase_categories · phones ·
   purchases · order_queue · bot_sessions · advice_log · card_ledger.
@@ -204,8 +209,10 @@ donat-system/
   `DATABASE_URL`). Из сети владельца `api.telegram.org` бывает недоступен — проверять
   с Vercel (`?dry=1`) или `curl`'ом.
 - Лимиты: Neon 1 ГБ (занято ~8 МБ) · функция ≤300 с (наши — 3–5 с, `maxDuration 60`) ·
-  Telegram 4096 симв (худший отчёт ~2400) · бэкап ~360 КБ из 50 МБ · кронов 2 из 100.
-- Ждёт владельца: ротация секретов (Neon password, BotFather `/revoke`).
+  Telegram 4096 симв (худший отчёт ~2400) · бэкап ~360 КБ из 50 МБ · кронов 2 из 100
+  + внешний будильник слотов (cron-job.org).
+- Ждёт владельца: завести `SLOTS_SECRET` в Vercel и задание в cron-job.org (шаги — `docs/HANDOFF.md`);
+  ротация секретов (Neon password, BotFather `/revoke`).
 - ❌ Не делаем раньше данных: общие советы «сбавь темп», веб-дашборд. Анти-цели — `TODO.md`.
 
 ## 10. Рабочий процесс

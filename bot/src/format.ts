@@ -129,6 +129,11 @@ export function agoText(from: Date | string | number, now: Date = new Date()): s
   return h % 24 ? `${d} дн ${h % 24} ч` : `${d} дн`;
 }
 
+/** Час суток по МСК (0–23). */
+export function mskHour(at: Date | string | number): number {
+  return new Date(new Date(at).getTime() + MSK_OFFSET_MS).getUTCHours();
+}
+
 /** Время суток по МСК: «16:21». Принимает Date или строку из БД. */
 export function hhmmMsk(at: Date | string | number): string {
   const x = new Date(new Date(at).getTime() + MSK_OFFSET_MS);

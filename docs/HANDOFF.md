@@ -12,6 +12,7 @@
 | База | Neon (Postgres), строка подключения в `DATABASE_URL` | нет |
 | Секреты | `.env` локально + Vercel → Settings → Environment Variables | нет |
 | Ежедневный бэкап | группа «Pattern_analyst 🧮», 12:05 МСК (JSON + CSV); восстановление — `npm run restore-drill` (см. db-schema.md) | нет |
+| Напоминания о слотах €100 | cron-job.org (аккаунт владельца) → `/api/cron-slots` каждые 10 мин, секрет `SLOTS_SECRET` | нет |
 
 ⚠️ Храни копию `.env` в менеджере паролей: в git его нет и быть не должно.
 
@@ -66,6 +67,32 @@
   через 48 ч), в базе — только вписанные суммы и поправки. Сумма вписана.
   Подробно — `docs/db-schema.md`, раздел `card_ledger`.
 - Ждёт владельца: ротация секретов (Neon password, BotFather `/revoke`).
+
+## Будильник слотов (cron-job.org) — как настроить
+
+Кроны Vercel Hobby срабатывают раз в сутки, поэтому «не открылся ли слот под €100»
+проверяет внешний сервис. Свой секрет — **отдельный** от `CRON_SECRET`: сторонний
+сервис не должен уметь запускать сводку и бэкап.
+
+1. Придумать секрет — длинную случайную строку, например (у себя в терминале):
+   ```bash
+   node -e "console.log(crypto.randomUUID().replaceAll('-','') + crypto.randomUUID().replaceAll('-',''))"
+   ```
+2. Vercel → проект → Settings → Environment Variables → `SLOTS_SECRET` = эта строка
+   (Production) → Redeploy. В локальный `.env` — тоже (для проверки).
+3. cron-job.org → Create cronjob:
+   - URL `https://donat-system.vercel.app/api/cron-slots`, расписание — каждые 10 минут;
+   - Advanced → Headers: `Authorization` = `Bearer <секрет>`;
+   - Notifications: при сбоях — на почту владельца.
+4. Проверка без отправки:
+   ```bash
+   curl -s -H "Authorization: Bearer <SLOTS_SECRET>" "https://donat-system.vercel.app/api/cron-slots?dry=1"
+   ```
+   Ответ `{"status": …}`: `quiet-hours` (00–09 МСК), `no-orders`, `nothing` (слотов нет),
+   `sent` (+ какие телефоны). `503` — секрет в Vercel не задан.
+
+Секрет не задан → будильник выключен, бот работает как раньше. Отключить
+напоминания — выключить задание в cron-job.org.
 
 ## Проверить, что бот жив (одной командой, ничего не отправляет)
 

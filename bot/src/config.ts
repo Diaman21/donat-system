@@ -52,5 +52,11 @@ export const env = {
   webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
   /** Секрет cron (Vercel): шлётся в Authorization при вызове по расписанию. */
   cronSecret: process.env.CRON_SECRET ?? '',
+  /**
+   * Секрет будильника слотов (api/cron-slots.ts): его шлёт cron-job.org в
+   * Authorization. Отдельный от CRON_SECRET — сторонний сервис не должен уметь
+   * запускать сводку и бэкап. Пусто — будильник выключен.
+   */
+  slotsSecret: process.env.SLOTS_SECRET ?? '',
   nodeEnv: process.env.NODE_ENV ?? 'development',
 };

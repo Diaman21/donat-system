@@ -210,6 +210,24 @@ export function allowedAt(charges: Charge[], amount: number, now: Date, isPro: b
   return new Date(t);
 }
 
+/**
+ * Когда на телефоне можно следующую покупку на `amount`, если последняя попытка
+ * была в `lastAt` (любой категории — интервал меряется от неё, как в attempts()).
+ * То же правило, что allowedAt, плюс отлёжка после ⚠️ — денег она не списала,
+ * но телефону нужны сутки. Для «☎️ Телефоны» и напоминаний о слотах (19.10.2026).
+ * @param charges ✅ танковые списания телефона (старше суток можно не отсеивать).
+ */
+export function slotOpensAt(
+  last: { at: Date; result: 'done' | 'support' | 'long' | 'verify' },
+  charges: Charge[],
+  amount: number,
+  isPro: boolean,
+): Date {
+  const t = allowedAt(charges, amount, last.at, isPro).getTime();
+  const rest = last.result === 'support' ? last.at.getTime() + SUPPORT_REST_H * H : 0;
+  return new Date(Math.max(t, rest));
+}
+
 // «сегодня» / «завтра» / «послезавтра» / «15.09» — по московскому календарю.
 // Считаем от момента покупки, а не от «сейчас»: сообщение остаётся верным,
 // даже если его перечитают позже.

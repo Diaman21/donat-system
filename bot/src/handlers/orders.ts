@@ -131,7 +131,7 @@ export async function closeOrderIfDone(
 }
 
 // Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
-async function teamMentions(): Promise<string> {
+export async function teamMentions(): Promise<string> {
   const team = await db
     .select({ username: users.username })
     .from(users)
@@ -232,7 +232,7 @@ export async function onOrderText(ctx: AppContext, text: string): Promise<void> 
   await createOrder(ctx, body);
 }
 
-async function countOpen(): Promise<number> {
+export async function countOpen(): Promise<number> {
   const r = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(orderQueue)
