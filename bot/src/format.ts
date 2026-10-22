@@ -129,6 +129,12 @@ export function agoText(from: Date | string | number, now: Date = new Date()): s
   return h % 24 ? `${d} дн ${h % 24} ч` : `${d} дн`;
 }
 
+/** Последний ли сегодня (по МСК) день календарного месяца. */
+export function isLastDayOfMonthMsk(at: Date = new Date()): boolean {
+  const iso = mskIsoOfDate(at);
+  return addDaysIso(iso, 1).slice(5, 7) !== iso.slice(5, 7);
+}
+
 /** Час суток по МСК (0–23). */
 export function mskHour(at: Date | string | number): number {
   return new Date(new Date(at).getTime() + MSK_OFFSET_MS).getUTCHours();

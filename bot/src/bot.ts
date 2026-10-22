@@ -58,6 +58,7 @@ import { showPhoneList, showPhoneHistory, HIST_CB } from './handlers/history.js'
 import { showVkReport } from './handlers/vk.js';
 import { showCorridor } from './handlers/corridor.js';
 import { showLearn } from './handlers/learn.js';
+import { onPeriodCallback, PER_CB } from './handlers/period.js';
 import {
   showCard,
   onCardCallback,
@@ -213,6 +214,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
           }
         }
         return;
+      }
+      if (data.startsWith(PER_CB)) {
+        return void (await onPeriodCallback(ctx, data.slice(PER_CB.length)));
       }
       if (data.startsWith(CARD_CB)) {
         return void (await onCardCallback(ctx, data.slice(CARD_CB.length)));

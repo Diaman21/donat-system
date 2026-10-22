@@ -16,6 +16,13 @@ import { cancelKb, requirePrivate } from './common.js';
 import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
 import { inTopic } from '../group.js';
+import { PER_CB } from './period.js';
+
+// Итоги отчётного периода и за всё время (period.ts, 22.10.2026) — под списком
+// заказов: и в личке, и в группе (обнулять можно только в личке).
+function periodButtons(kb: InlineKeyboard): void {
+  kb.text('📊 Итоги периода', `${PER_CB}show`).text('📈 За всё время', `${PER_CB}all`);
+}
 
 // «📥 Заказы» — простой список задач команды: скинул текст → отметил выполненным.
 // С покупками сознательно НЕ связан (чтобы не мусорить данные «зелёного коридора»).
@@ -286,9 +293,10 @@ export async function listOrders(ctx: AppContext): Promise<void> {
   const kb = new InlineKeyboard();
 
   if (open.length === 0) {
-    if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`);
+    if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`).row();
+    periodButtons(kb);
     await ctx.reply([...head, 'Открытых заказов нет 🎉'].join('\n'), {
-      reply_markup: allowEdit ? kb : undefined,
+      reply_markup: kb,
     });
     return;
   }
@@ -314,10 +322,11 @@ export async function listOrders(ctx: AppContext): Promise<void> {
   if (open.length > shown.length) {
     lines.push(`…и ещё ${open.length - shown.length} открытых (показаны первые ${MAX_OPEN_SHOWN}).`);
   }
-  if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`);
+  if (allowEdit) kb.text('➕ Добавить заказ', `${ORD_CB}add`).row();
+  periodButtons(kb);
 
   await ctx.reply([...head, ...lines].join('\n'), {
-    reply_markup: allowEdit ? kb : undefined,
+    reply_markup: kb,
   });
 }
 

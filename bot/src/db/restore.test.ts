@@ -93,12 +93,16 @@ const fixture: BackupData = {
     { id: 3, kind: 'balance', amount_eur: '1240.50', phone_id: null, effective_at: ts('05'), created_by: U1, created_at: ts('05'), updated_at: ts('05') },
     { id: 4, kind: 'refund', amount_eur: '28.00', phone_id: PH_DEAD, effective_at: ts('06'), created_by: U2, created_at: ts('06'), updated_at: ts('06') },
   ],
+  // Отчётные периоды (0018): одно обнуление.
+  report_periods: [
+    { id: 2, started_at: ts('07'), started_by: U1, created_at: ts('07') },
+  ],
 };
 
 test('восстановление: все миграции поднимаются, бэкап встаёт без ошибок', async () => {
   const pg = await freshDb();
   const done = await restoreBackup(pg, fixture);
-  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1, card_ledger: 2 });
+  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1, card_ledger: 2, report_periods: 1 });
 });
 
 test('восстановление: трудные случаи на месте', async () => {
@@ -142,6 +146,9 @@ test('восстановление: трудные случаи на месте'
     pg.query(`insert into card_ledger (kind, amount_eur, effective_at) values ('refund', 1, now())`),
     /card_ledger_refund_has_phone/,
   );
+  // Периоды: время цело, счётчик id после максимального.
+  assert.equal(new Date((await one(`select started_at from report_periods`)).started_at as string).toISOString(), '2026-09-07T10:00:00.123Z');
+  assert.equal((await one(`select nextval('report_periods_id_seq')::int n`)).n, 3);
   // Защита от дубля работает и после восстановления.
   await assert.rejects(
     pg.query(`insert into purchases (phone_id, operator_id, category_id, amount, result, idem_key)
@@ -176,9 +183,10 @@ test('восстановление: ошибка посреди — откат �
 
 test('восстановление: дамп до 07.10.2026 (без advice_log и card_ledger) встаёт без правки', async () => {
   const pg = await freshDb();
-  const { advice_log: _drop, card_ledger: _drop2, ...old } = fixture;
+  const { advice_log: _drop, card_ledger: _drop2, report_periods: _drop3, ...old } = fixture;
   const done = await restoreBackup(pg, old as BackupData);
   assert.equal(done.advice_log, 0);
   assert.equal(done.card_ledger, 0);
+  assert.equal(done.report_periods, 0);
   assert.equal(done.purchases, 6);
 });

@@ -133,6 +133,16 @@ export const cardLedger = pgTable('card_ledger', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- report_periods — начала отчётных периодов (миграция 0018) ----------
+// Строка = момент «✅ Расчёт произведён». Итоги не хранятся — пересчитываются
+// из purchases (period-calc.ts). Строк нет — период с FIRST_PERIOD_START.
+export const reportPeriods = pgTable('report_periods', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  startedBy: uuid('started_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- bot_sessions — состояние пошагового ввода (grammy session) ----------
 // Нужно для serverless (Vercel): память между запросами не сохраняется.
 export const botSessions = pgTable('bot_sessions', {
