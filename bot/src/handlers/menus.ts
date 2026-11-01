@@ -55,9 +55,8 @@ export function greeting(user: User): string {
 // Главное меню оператора/модератора (логгер закупок).
 export function mainMenu(): Keyboard {
   return new Keyboard()
+    // Сверху — два входа в закупку рядом: по заказу и без (просьба владельца 02.11.2026).
     .text(BTN.orders)
-    .text(BTN.accounts)
-    .row()
     .text(BTN.purchase)
     .row()
     .text(BTN.addPhone)
@@ -73,6 +72,9 @@ export function mainMenu(): Keyboard {
     .row()
     .text(BTN.report)
     .text(BTN.delLast)
+    .row()
+    // Аккаунты — внизу: нужны реже, чем закупка.
+    .text(BTN.accounts)
     .resized()
     .persistent();
 }
