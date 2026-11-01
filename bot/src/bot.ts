@@ -151,7 +151,8 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.hears(/Закупка$/, startPurchaseStandalone);
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
-  bot.hears(/Аккаунты$/, showAccounts);
+  // «👤 Акки» — с 02.11.2026; «Аккаунты» — для закешированных старых клавиатур.
+  bot.hears(/(Акки|Аккаунты)$/, showAccounts);
   bot.hears(/Заказы$/, listOrders); // «📥 Заказы» — раньше «📝 Заказ», чтобы не путались
   bot.hears(/Заказ$/, startAddOrder); // старая кнопка «📝 Заказ» — на всякий случай
   bot.hears(/Подготовленные$/, listPrepared);

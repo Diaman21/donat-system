@@ -31,13 +31,15 @@ export const BTN = {
   // «🛒 Без заказа» остаётся для разогрева €2 и всего, что не по заказу.
   orders: '📥 Заказы',
   // Очередь аккаунтов на регистрацию (accounts.ts, 01.11.2026).
-  accounts: '👤 Аккаунты',
+  accounts: '👤 Акки',
   purchase: '🛒 Без заказа',
   addPhone: '➕📱 Телефон',
   phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
   find: '🔍 Поиск по IMEI',
   stats: '📊 Статистика',
+  // ВК на паузе (Apple убрали приложения) — кнопки в меню нет с 02.11.2026,
+  // отчёт остаётся по /vk. Вернётся ВК — вернуть BTN.vk в mainMenu().
   vk: '🗳 ВК',
   recent: '📋 Последние',
   // Бюджет на карте (card.ts) — по нему решают, когда выкатывать телефон.
@@ -64,7 +66,7 @@ export function mainMenu(): Keyboard {
     .text(BTN.prepared)
     .row()
     .text(BTN.stats)
-    .text(BTN.vk)
+    .text(BTN.accounts) // на месте «🗳 ВК» (просьба владельца 02.11.2026)
     .text(BTN.recent)
     .row()
     .text(BTN.find)
@@ -72,9 +74,6 @@ export function mainMenu(): Keyboard {
     .row()
     .text(BTN.report)
     .text(BTN.delLast)
-    .row()
-    // Аккаунты — внизу: нужны реже, чем закупка.
-    .text(BTN.accounts)
     .resized()
     .persistent();
 }
