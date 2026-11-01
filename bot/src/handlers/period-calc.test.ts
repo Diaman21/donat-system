@@ -43,20 +43,37 @@ test('период — без разогрева; всё время — с ра�
     r(null, 3.99, 'done', 'vk_votes'),
     r(null, 3.99, 'done', 'vk_votes'),
   ]);
-  const period = tallyLines(t, false).join('\n');
+  const period = tallyLines(t, 'period').join('\n');
   assert.doesNotMatch(period, /Разогрев/);
-  assert.match(period, /Massive €100 ×1 — €100/);
-  assert.match(period, /ВК ×2 — €7\.98/);
-  assert.match(period, /Итого: 4 покупки · €212\.98 \(без разогрева\)/);
-  const all = tallyLines(t, true).join('\n');
-  assert.match(all, /Разогрев €2 ×2 — €4/);
-  assert.match(all, /Итого: 6 покупок · €216\.98$/);
+  assert.match(period, /Massive €100 ×1 — €100 → 2 400/);
+  assert.match(period, /ВК ×2 — €7\.98$/m); // у ВК цены нет — без суммы
+  assert.match(period, /Итого: 4 покупки · €212\.98 → 4 800 \(без разогрева\)/);
+  assert.match(period, /ВК и прочее — без суммы \(цены нет\)$/);
+  const all = tallyLines(t, 'all').join('\n');
+  assert.match(all, /Разогрев €2 ×2 — €4$/m); // разогрев выручки не даёт
+  assert.match(all, /Итого: 6 покупок · €216\.98 → 4 800$/m);
+  assert.match(all, /сумма → по текущим ценам; ВК и прочее — без суммы/);
+});
+
+test('выручка: 800 за €30, 2400 за €105 и €100 — числом, без валюты', () => {
+  const t = tally([
+    ...Array.from({ length: 15 }, () => r('Furious', 30)),
+    ...Array.from({ length: 5 }, () => r('Furious', 105)),
+    ...Array.from({ length: 25 }, () => r('Massive', 100)),
+    r('Massive', 100, 'verify'), // 🔐 — не выручка
+  ]);
+  const lines = tallyLines(t, 'period').join('\n');
+  assert.match(lines, /Furious €30 ×15 — €450 → 12 000/);
+  assert.match(lines, /Furious €105 ×5 — €525 → 12 000/);
+  assert.match(lines, /Massive €100 ×25 — €2500 → 60 000/);
+  assert.match(lines, /Итого: 45 покупок · €3475 → 84 000 \(без разогрева\)$/);
+  assert.doesNotMatch(lines, /цены нет/); // прочего нет — без лишней приписки
 });
 
 test('пустой период — нули, а не пустой экран', () => {
-  const lines = tallyLines(tally([]), false);
-  assert.match(lines.join('\n'), /Furious €30 ×0 — €0/);
-  assert.match(lines.at(-1)!, /Итого: 0 покупок · €0/);
+  const lines = tallyLines(tally([]), 'period');
+  assert.match(lines.join('\n'), /Furious €30 ×0 — €0 → 0/);
+  assert.match(lines.at(-1)!, /Итого: 0 покупок · €0 → 0/);
 });
 
 test('длительность периода: день начала — первый день', () => {

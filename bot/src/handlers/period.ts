@@ -50,7 +50,7 @@ async function periodBody(from: Date, to: Date | null, now: Date): Promise<strin
   const [rows, orders] = await Promise.all([rowsSince(from, to), ordersClosedSince(from, to)]);
   return [
     `📊 Отчётный период ${periodSpan(from, to ?? now)}`,
-    ...tallyLines(tally(rows), false),
+    ...tallyLines(tally(rows), 'period'),
     `   Заказов закрыто: ${orders}`,
   ];
 }
@@ -92,7 +92,7 @@ export async function showAllTime(ctx: AppContext): Promise<void> {
   ]);
   const since = first[0]?.first ? ` (с ${fmtMskDate(new Date(first[0].first))})` : '';
   await ctx.reply(
-    [`📈 За всё время${since}`, ...tallyLines(tally(rows), true), `   Заказов закрыто: ${orders}`].join('\n'),
+    [`📈 За всё время${since}`, ...tallyLines(tally(rows), 'all'), `   Заказов закрыто: ${orders}`].join('\n'),
     { reply_markup: new InlineKeyboard().text('📊 Итоги периода', `${PER_CB}show`) },
   );
 }
