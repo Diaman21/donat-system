@@ -97,12 +97,17 @@ const fixture: BackupData = {
   report_periods: [
     { id: 2, started_at: ts('07'), started_by: U1, created_at: ts('07') },
   ],
+  // Очередь аккаунтов (0020): зарегистрированный на телефон и готовый.
+  accounts: [
+    { id: 'f0000000-0000-4000-8000-000000000001', num: 11, text: 'acc11', status: 'registered', created_by: U2, created_at: ts('05'), registered_by: U1, registered_at: ts('06'), phone_id: PH_ACTIVE, topic_message_id: 501, updated_at: ts('06') },
+    { id: 'f0000000-0000-4000-8000-000000000002', num: 12, text: 'acc12', status: 'ready', created_by: U2, created_at: ts('07'), registered_by: null, registered_at: null, phone_id: null, topic_message_id: 502, updated_at: ts('07') },
+  ],
 };
 
 test('восстановление: все миграции поднимаются, бэкап встаёт без ошибок', async () => {
   const pg = await freshDb();
   const done = await restoreBackup(pg, fixture);
-  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1, card_ledger: 2, report_periods: 1 });
+  assert.deepEqual(done, { users: 2, purchase_categories: 2, order_queue: 1, phones: 4, purchases: 6, advice_log: 1, card_ledger: 2, report_periods: 1, accounts: 2 });
 });
 
 test('восстановление: трудные случаи на месте', async () => {
@@ -149,6 +154,9 @@ test('восстановление: трудные случаи на месте'
   // Периоды: время цело, счётчик id после максимального.
   assert.equal(new Date((await one(`select started_at from report_periods`)).started_at as string).toISOString(), '2026-09-07T10:00:00.123Z');
   assert.equal((await one(`select nextval('report_periods_id_seq')::int n`)).n, 3);
+  // Аккаунты: привязка к телефону цела, следующий получит #13.
+  assert.equal((await one(`select phone_id::text p from accounts where num = 11`)).p, PH_ACTIVE);
+  assert.equal((await one(`select nextval('accounts_num_seq')::int n`)).n, 13);
   // Защита от дубля работает и после восстановления.
   await assert.rejects(
     pg.query(`insert into purchases (phone_id, operator_id, category_id, amount, result, idem_key)
@@ -183,10 +191,11 @@ test('восстановление: ошибка посреди — откат �
 
 test('восстановление: дамп до 07.10.2026 (без advice_log и card_ledger) встаёт без правки', async () => {
   const pg = await freshDb();
-  const { advice_log: _drop, card_ledger: _drop2, report_periods: _drop3, ...old } = fixture;
+  const { advice_log: _drop, card_ledger: _drop2, report_periods: _drop3, accounts: _drop4, ...old } = fixture;
   const done = await restoreBackup(pg, old as BackupData);
   assert.equal(done.advice_log, 0);
   assert.equal(done.card_ledger, 0);
   assert.equal(done.report_periods, 0);
+  assert.equal(done.accounts, 0);
   assert.equal(done.purchases, 6);
 });

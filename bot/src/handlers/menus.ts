@@ -30,6 +30,8 @@ export const BTN = {
   // Основная работа идёт от заказа: «📥 Заказы» → «✅ Выполнить» запускает закупку.
   // «🛒 Без заказа» остаётся для разогрева €2 и всего, что не по заказу.
   orders: '📥 Заказы',
+  // Очередь аккаунтов на регистрацию (accounts.ts, 01.11.2026).
+  accounts: '👤 Аккаунты',
   purchase: '🛒 Без заказа',
   addPhone: '➕📱 Телефон',
   phones: '☎️ Телефоны',
@@ -54,6 +56,7 @@ export function greeting(user: User): string {
 export function mainMenu(): Keyboard {
   return new Keyboard()
     .text(BTN.orders)
+    .text(BTN.accounts)
     .row()
     .text(BTN.purchase)
     .row()

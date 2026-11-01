@@ -13,6 +13,8 @@ export type FlowState =
   | { kind: 'add_phone_card'; imei: string; label: string | null }
   | { kind: 'prep_card'; phoneId: string }
   | { kind: 'phone_card'; phoneId: string }
+  // «👤 Аккаунты» → «➕ Добавить» (миграция 0020): ждём текст аккаунта.
+  | { kind: 'account_text' }
   | { kind: 'find_phone_imei' }
   | { kind: 'order_text' }
   | { kind: 'report_custom_date' }

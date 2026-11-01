@@ -48,6 +48,8 @@ export const env = {
   topicSummary: process.env.TELEGRAM_TOPIC_SUMMARY ?? '',
   topicBackup: process.env.TELEGRAM_TOPIC_BACKUP ?? '',
   topicOrders: process.env.TELEGRAM_TOPIC_ORDERS ?? '',
+  /** Тема «👤 Аккаунты» (01.11.2026): очередь аккаунтов на регистрацию. */
+  topicAccounts: process.env.TELEGRAM_TOPIC_ACCOUNTS ?? '',
   /** Секрет вебхука (Vercel): Telegram шлёт его в заголовке, мы проверяем. */
   webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
   /** Секрет cron (Vercel): шлётся в Authorization при вызове по расписанию. */

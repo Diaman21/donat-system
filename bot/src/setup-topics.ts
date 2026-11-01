@@ -1,10 +1,12 @@
 import { Bot, GrammyError } from 'grammy';
 import { env } from './config.js';
 
-// Темы в группе «Pattern_analyst 🧮»: «📊 Сводки», «🗄 Бэкапы», «📥 Заказы».
+// Темы в группе «Pattern_analyst 🧮»: «📊 Сводки», «🗄 Бэкапы», «📥 Заказы»,
+// «👤 Аккаунты» (с 01.11.2026).
 //
 //   npx tsx src/setup-topics.ts           — только проверка, ничего не создаёт
-//   npx tsx src/setup-topics.ts --create  — создать три темы и вывести их номера
+//   npx tsx src/setup-topics.ts --create  — создать НЕДОСТАЮЩИЕ темы (номер которых ещё
+//                                           не задан в .env) и вывести их номера
 //
 // ⚠️ ЧТО СДЕЛАТЬ ВЛАДЕЛЬЦУ ДО ЗАПУСКА (в Telegram, в настройках группы):
 //   1. Включить «Темы» (Topics). Обычная группа при этом становится
@@ -14,12 +16,13 @@ import { env } from './config.js';
 //   TELEGRAM_GROUP_ID (если сменился), TELEGRAM_TOPIC_SUMMARY,
 //   TELEGRAM_TOPIC_BACKUP, TELEGRAM_TOPIC_ORDERS → Redeploy.
 //   Пока переменные не заданы, бот пишет в группу как раньше.
-// ⚠️ Повторный запуск с --create создаст ВТОРОЙ комплект тем — не надо.
+// Повторный запуск безопасен: тема, номер которой уже есть в .env, не создаётся.
 
 const TOPICS = [
   { env: 'TELEGRAM_TOPIC_SUMMARY', name: '📊 Сводки' },
   { env: 'TELEGRAM_TOPIC_BACKUP', name: '🗄 Бэкапы' },
   { env: 'TELEGRAM_TOPIC_ORDERS', name: '📥 Заказы' },
+  { env: 'TELEGRAM_TOPIC_ACCOUNTS', name: '👤 Аккаунты' },
 ] as const;
 
 async function main(): Promise<void> {
@@ -64,6 +67,10 @@ async function main(): Promise<void> {
   console.log('\nСоздаю темы. Пропишите в Vercel → Environment Variables (и в .env):');
   if (String(chatId) !== String(env.groupChatId)) console.log(`TELEGRAM_GROUP_ID=${chatId}`);
   for (const t of TOPICS) {
+    if (process.env[t.env]) {
+      console.log(`${t.env} уже задан (${process.env[t.env]}) — пропускаю`);
+      continue;
+    }
     const topic = await bot.api.createForumTopic(chatId, t.name);
     console.log(`${t.env}=${topic.message_thread_id}`);
   }

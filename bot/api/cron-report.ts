@@ -11,6 +11,7 @@ import {
 import { weeklyLines } from '../src/handlers/weekly.js';
 import { cardSummaryLines } from '../src/handlers/card.js';
 import { periodSummaryLines } from '../src/handlers/period.js';
+import { accountsSummaryLines } from '../src/handlers/accounts.js';
 import { notifyModerator } from '../src/notify.js';
 
 // Vercel Cron: ежедневная сводка в группу.
@@ -60,6 +61,7 @@ export default async function handler(req: any, res: any): Promise<void> {
           summary: inTopic('summary').message_thread_id ?? null,
           backup: inTopic('backup').message_thread_id ?? null,
           orders: inTopic('orders').message_thread_id ?? null,
+          accounts: inTopic('accounts').message_thread_id ?? null,
         },
         telegram,
       }),
@@ -85,7 +87,7 @@ export default async function handler(req: any, res: any): Promise<void> {
     // запросов к Neon, а функция на Vercel ограничена по времени: если она
     // не успеет, сводка за день просто не придёт. Последовательный сбор
     // тратил бы секунды на ожидание сети впустую.
-    const [violations, idle, shift, card, period, phonesNow, weekly, stats] = await Promise.all([
+    const [violations, idle, shift, card, period, accounts, phonesNow, weekly, stats] = await Promise.all([
       violationsLines(24),
       // Пусто, пока никто не простаивает дольше порога.
       idleLines(),
@@ -95,6 +97,8 @@ export default async function handler(req: any, res: any): Promise<void> {
       cardSummaryLines(),
       // Отчётный период: итоги с последнего «✅ Расчёт произведён» (с 22.10.2026).
       periodSummaryLines(),
+      // Сколько аккаунтов готово к регистрации (с 01.11.2026).
+      accountsSummaryLines(),
       phonesNowLines(),
       // По понедельникам — итог прошедшей недели. В остальные дни пусто.
       weeklyLines(),
@@ -111,6 +115,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       ...(shift.length ? ['', ...shift] : []),
       ...(card.length ? ['', ...card] : []),
       ...(period.length ? ['', ...period] : []),
+      ...(accounts.length ? ['', ...accounts] : []),
       '',
       ...phonesNow,
       ...(weekly.length ? ['', ...weekly] : []),

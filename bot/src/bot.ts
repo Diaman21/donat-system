@@ -64,6 +64,7 @@ import { showVkReport } from './handlers/vk.js';
 import { showCorridor } from './handlers/corridor.js';
 import { showLearn } from './handlers/learn.js';
 import { onPeriodCallback, PER_CB } from './handlers/period.js';
+import { showAccounts, onAccountsCallback, onAccountText, ACC_CB } from './handlers/accounts.js';
 import {
   showCard,
   onCardCallback,
@@ -133,6 +134,7 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.command('find', startFindPhone);
   bot.command('order', startAddOrder);
   bot.command('orders', listOrders);
+  bot.command('accounts', showAccounts);
   bot.command('recent', showRecent);
   bot.command('history', showPhoneList);
   bot.command('report', sendReportToGroup);
@@ -149,6 +151,7 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.hears(/Закупка$/, startPurchaseStandalone);
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
+  bot.hears(/Аккаунты$/, showAccounts);
   bot.hears(/Заказы$/, listOrders); // «📥 Заказы» — раньше «📝 Заказ», чтобы не путались
   bot.hears(/Заказ$/, startAddOrder); // старая кнопка «📝 Заказ» — на всякий случай
   bot.hears(/Подготовленные$/, listPrepared);
@@ -219,6 +222,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
           }
         }
         return;
+      }
+      if (data.startsWith(ACC_CB)) {
+        return void (await onAccountsCallback(ctx, data.slice(ACC_CB.length)));
       }
       if (data.startsWith(PER_CB)) {
         return void (await onPeriodCallback(ctx, data.slice(PER_CB.length)));
@@ -309,6 +315,8 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
         return onPurchaseNote(ctx, ctx.message.text);
       case 'report_custom_date':
         return onReportCustomDate(ctx, ctx.message.text);
+      case 'account_text':
+        return onAccountText(ctx, ctx.message.text);
       case 'add_phone_card':
         return onAddPhoneCard(ctx, ctx.message.text);
       case 'prep_card':

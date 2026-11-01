@@ -13,6 +13,7 @@ import { db } from '../db/client.js';
 // advice_log (журнал подсказок, миграция 0016) — с 07.10.2026.
 // card_ledger (бюджет на карте, миграция 0017) — с 10.10.2026.
 // report_periods (отчётные периоды, миграция 0018) — с 22.10.2026.
+// accounts (очередь аккаунтов, миграция 0020) — с 01.11.2026.
 const TABLES = [
   'users',
   'purchase_categories',
@@ -22,6 +23,7 @@ const TABLES = [
   'advice_log',
   'card_ledger',
   'report_periods',
+  'accounts',
 ] as const;
 
 // bot_sessions не бэкапим — это временное состояние ввода, ценности нет.

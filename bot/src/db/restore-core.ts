@@ -37,6 +37,8 @@ export interface BackupData {
   card_ledger?: Row[];
   /** Отчётные периоды (миграция 0018). В дампах до 22.10.2026 их нет. */
   report_periods?: Row[];
+  /** Очередь аккаунтов (миграция 0020). В дампах до 01.11.2026 её нет. */
+  accounts?: Row[];
 }
 
 /**
@@ -55,6 +57,7 @@ export const RESTORE_ORDER = [
   'advice_log', // ссылается на покупки и телефоны
   'card_ledger', // ссылается на телефоны и пользователей
   'report_periods', // ссылается на пользователей
+  'accounts', // ссылается на пользователей и телефоны
 ] as const;
 
 // Вставка массива строк одним запросом. jsonb_populate_recordset сам приводит
@@ -97,7 +100,8 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
     `select (select count(*) from users)::int + (select count(*) from phones)::int
           + (select count(*) from purchases)::int + (select count(*) from order_queue)::int
           + (select count(*) from advice_log)::int + (select count(*) from card_ledger)::int
-          + (select count(*) from report_periods)::int as n`,
+          + (select count(*) from report_periods)::int
+          + (select count(*) from accounts)::int as n`,
   );
   if (Number(busy.rows[0]?.n) > 0) {
     throw new Error('База не пустая — восстановление делается только в чистую базу.');
@@ -142,6 +146,7 @@ export async function restoreBackup(db: Exec, data: BackupData): Promise<Record<
     await db.query(`select setval('advice_log_id_seq', (select coalesce(max(id), 1) from advice_log))`);
     await db.query(`select setval('card_ledger_id_seq', (select coalesce(max(id), 1) from card_ledger))`);
     await db.query(`select setval('report_periods_id_seq', (select coalesce(max(id), 1) from report_periods))`);
+    await db.query(`select setval('accounts_num_seq', (select coalesce(max(num), 1) from accounts))`);
 
     await db.query('commit');
     return done;

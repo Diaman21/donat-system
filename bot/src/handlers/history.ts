@@ -8,6 +8,7 @@ import { fmtMsk } from '../format.js';
 import { PHONE_MARK, PHONE_STATE } from './menus.js';
 import { paidEur, paidUnits } from './money.js';
 import { cardLine } from './card4.js';
+import { accountsOfPhone } from './accounts.js';
 
 export const HIST_CB = 'hist:'; // + phoneId
 
@@ -84,12 +85,15 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
       votes: rows.reduce((a, p) => a + paidUnits(p), 0),
     };
   };
+  // Аккаунты, зарегистрированные на этот телефон (очередь «👤 Аккаунты», 0020).
+  const accNums = await accountsOfPhone(phoneId);
   const tanks = sumBy('game_donate');
   const vk = sumBy('vk_votes');
 
   const head = [
     `📜 История …${ph.imeiLast4}${label} — ${statusLabel}`,
     cardLine(ph.cardLast4),
+    accNums.length ? `👤 Аккаунт: ${accNums.map((n) => `#${n}`).join(', ')}` : null,
     `Всего: ${items.length} покупок на €${total.toFixed(2)}`,
     tanks.c > 0 ? `🎮 Танки: ${tanks.c} покупок на €${tanks.sum.toFixed(2)}` : null,
     vk.c > 0 ? `🗳 ВК: ${vk.c} покупок на €${vk.sum.toFixed(2)} (${vk.votes} голосов)` : null,

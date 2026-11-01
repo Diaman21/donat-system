@@ -10,12 +10,13 @@ import { env } from './config.js';
 // как раньше. Ответы на команды grammY сам отправляет в ту же тему, где
 // команду написали, — здесь только сообщения, которые бот шлёт сам.
 
-export type GroupTopic = 'summary' | 'backup' | 'orders';
+export type GroupTopic = 'summary' | 'backup' | 'orders' | 'accounts';
 
 const TOPIC_ID: Record<GroupTopic, string> = {
   summary: env.topicSummary, // ежедневная сводка, /report, итоги циклов
   backup: env.topicBackup, // backup-full-*.json и purchases-*.csv
   orders: env.topicOrders, // посты о новых заказах
+  accounts: env.topicAccounts, // аккаунты на регистрацию (с 01.11.2026)
 };
 
 /** Опции отправки в нужную тему; пусто, если темы не настроены. */

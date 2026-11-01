@@ -146,6 +146,23 @@ export const reportPeriods = pgTable('report_periods', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- accounts — очередь аккаунтов (миграция 0020) ----------
+// Оператор добавляет готовый аккаунт (текст как есть, без паролей), владелец
+// отмечает «зарегистрирован» и телефон. Пост в теме «👤 Аккаунты» — topicMessageId.
+export const accounts = pgTable('accounts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  num: bigserial('num', { mode: 'number' }),
+  text: text('text').notNull(),
+  status: text('status').notNull().default('ready'), // ready | registered | cancelled
+  createdBy: uuid('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  registeredBy: uuid('registered_by'),
+  registeredAt: timestamp('registered_at', { withTimezone: true }),
+  phoneId: uuid('phone_id'),
+  topicMessageId: bigint('topic_message_id', { mode: 'number' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- bot_sessions — состояние пошагового ввода (grammy session) ----------
 // Нужно для serverless (Vercel): память между запросами не сохраняется.
 export const botSessions = pgTable('bot_sessions', {
