@@ -8,6 +8,11 @@ export type FlowState =
   | { kind: 'add_phone_imei' }
   | { kind: 'add_phone_label'; imei: string }
   | { kind: 'add_phone_dest'; imei: string; label: string | null }
+  // Карта для оплаты, 4 цифры (миграция 0019): новый телефон сразу в работу,
+  // перевод из резерва в работу, указать/сменить у работающего.
+  | { kind: 'add_phone_card'; imei: string; label: string | null }
+  | { kind: 'prep_card'; phoneId: string }
+  | { kind: 'phone_card'; phoneId: string }
   | { kind: 'find_phone_imei' }
   | { kind: 'order_text' }
   | { kind: 'report_custom_date' }

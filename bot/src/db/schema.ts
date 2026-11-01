@@ -70,6 +70,9 @@ export const phones = pgTable('phones', {
   deathReason: text('death_reason'), // 'error' (Apple) | 'forced' (вынужденный вывод)
   notes: text('notes'),
   deathPurchaseId: uuid('death_purchase_id'),
+  // Карта для оплаты на этом телефоне — последние 4 цифры (миграция 0019).
+  // NULL — не указана (телефоны до 01.11.2026, резерв).
+  cardLast4: text('card_last4'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

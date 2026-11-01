@@ -20,6 +20,11 @@ import {
   onPreparedDeleteConfirm,
   onKillAsk,
   onKillConfirm,
+  onAddPhoneCard,
+  onPrepCard,
+  onPhoneCardAsk,
+  onPhoneCardText,
+  PCARD_CB,
   onAddPhoneConfirm,
   KILL_CB,
   KILLC_CB,
@@ -240,6 +245,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
       if (data.startsWith(PREPDEL_CB)) {
         return void (await onPreparedDeleteAsk(ctx, data.slice(PREPDEL_CB.length)));
       }
+      if (data.startsWith(PCARD_CB)) {
+        return void (await onPhoneCardAsk(ctx, data.slice(PCARD_CB.length)));
+      }
       if (data.startsWith(PREP_CB)) {
         return void (await onPreparedToWork(ctx, data.slice(PREP_CB.length)));
       }
@@ -301,6 +309,12 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
         return onPurchaseNote(ctx, ctx.message.text);
       case 'report_custom_date':
         return onReportCustomDate(ctx, ctx.message.text);
+      case 'add_phone_card':
+        return onAddPhoneCard(ctx, ctx.message.text);
+      case 'prep_card':
+        return onPrepCard(ctx, ctx.message.text);
+      case 'phone_card':
+        return onPhoneCardText(ctx, ctx.message.text);
       case 'card_balance':
         return onCardBalanceText(ctx, ctx.message.text);
       case 'card_refund':

@@ -15,6 +15,7 @@ import { BIG_EUR, SMALL_EUR, WARMUP_DAYS, WITHDRAW_DAYS } from './interval.js';
 import { HIST_CB } from './history.js';
 import { asDeathReason, BY_APPLE, DEATH_SHORT } from './death.js';
 import { imeiRepeatNotice } from './phone-dup.js';
+import { parseCardLast4, cardLine } from './card4.js';
 import { refundNoticeLine } from './card.js';
 
 export const KILL_CB = 'kill:'; // спросить подтверждение вывода телефона
@@ -24,6 +25,7 @@ export const DEST_CB = 'dest:'; // назначение нового телеф�
 export const PREP_CB = 'prep:'; // подготовленный → в работу (+ phoneId)
 export const PREPDEL_CB = 'prepdel:'; // спросить подтверждение удаления подготовленного
 export const PREPDELC_CB = 'prepdelc:'; // подтвердить удаление подготовленного
+export const PCARD_CB = 'pcard:'; // указать/сменить карту работающего телефона (+ phoneId)
 
 // «🔍 Поиск по IMEI» — спрашиваем 4 цифры.
 export async function startFindPhone(ctx: AppContext): Promise<void> {
@@ -52,8 +54,14 @@ export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<vo
       connectedAt: phones.connectedAt,
       diedAt: phones.diedAt,
       deathReason: phones.deathReason,
-      cnt: sql<number>`(select count(*)::int from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
-      total: sql<string>`(select coalesce(sum(${purchases.amount}) filter (where ${purchases.result} = 'done'), 0) from ${purchases} where ${purchases.phoneId} = ${phones.id})`,
+      cardLast4: phones.cardLast4,
+      // ⚠️ Имя таблицы — явно. В запросе к одной таблице Drizzle пишет колонки
+      // без него (`"id"`), и подзапрос сравнивал покупку саму с собой: поиск
+      // с первого дня показывал «0 покупок на €0.00» и прятал кнопку истории
+      // (найдено 01.11.2026).
+      cnt: sql<number>`(select count(*)::int from purchases q where q.phone_id = "phones"."id")`,
+      total: sql<string>`(select coalesce(sum(q.amount) filter (where q.result = 'done'), 0)
+        from purchases q where q.phone_id = "phones"."id")`,
     })
     .from(phones)
     .where(eq(phones.imeiLast4, imei))
@@ -86,6 +94,7 @@ export async function onFindPhoneImei(ctx: AppContext, text: string): Promise<vo
     lines.push(
       `   с ${fmtMskDate(p.connectedAt)} · ${p.cnt} покупок на €${Number(p.total).toFixed(2)}`,
     );
+    if (p.cardLast4) lines.push(`   ${cardLine(p.cardLast4)}`);
     if (p.cnt > 0) kb.text(`📜 ${p.label ?? `…${imei}`}`, `${HIST_CB}${p.id}`).row();
   }
 
@@ -219,17 +228,58 @@ export async function onAddPhoneDest(ctx: AppContext, dest: string): Promise<voi
   const user = ctx.dbUser;
   if (!user) return;
   const status = dest === 'prepared' ? 'prepared' : 'active';
+  // Сразу в работу — сначала карта для оплаты (с 01.11.2026). Резерв без карты:
+  // её спросят при переводе в работу.
+  if (status === 'active') {
+    ctx.session.flow = { kind: 'add_phone_card', imei: flow.imei, label: flow.label };
+    await askCard(ctx, `…${flow.imei}${flow.label ? ` «${flow.label}»` : ''}`);
+    return;
+  }
   ctx.session.flow = undefined;
+  await insertPhone(ctx, flow.imei, flow.label, status, null);
+}
 
+/** Шаг 4 (только «в работу»): 4 цифры карты → создаём активный телефон. */
+export async function onAddPhoneCard(ctx: AppContext, text: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'add_phone_card') return;
+  const card = parseCardLast4(text);
+  if (!card) return void (await badCard(ctx));
+  ctx.session.flow = undefined;
+  await insertPhone(ctx, flow.imei, flow.label, 'active', card);
+}
+
+const askCard = (ctx: AppContext, phone: string, current: string | null = null) =>
+  ctx.reply(
+    `💳 Последние 4 цифры карты, привязанной для оплаты на ${phone}` +
+      `${current ? ` (сейчас ${current})` : ''}:`,
+    { reply_markup: cancelKb() },
+  );
+
+const badCard = (ctx: AppContext) =>
+  ctx.reply('Нужны ровно 4 последние цифры карты (напр. 2850). Попробуй ещё раз:', {
+    reply_markup: cancelKb(),
+  });
+
+async function insertPhone(
+  ctx: AppContext,
+  imei: string,
+  label: string | null,
+  status: 'active' | 'prepared',
+  card: string | null,
+): Promise<void> {
+  const user = ctx.dbUser;
+  if (!user) return;
   try {
     const rows = await db
       .insert(phones)
-      .values({ imeiLast4: flow.imei, label: flow.label, operatorId: user.id, status })
+      .values({ imeiLast4: imei, label, operatorId: user.id, status, cardLast4: card })
       .returning();
     const p = rows[0]!;
     const where = status === 'prepared' ? '🧰 в подготовленные' : '▶️ в работу';
     await ctx.reply(
-      `✅ Телефон …${p.imeiLast4}${p.label ? ` («${p.label}»)` : ''} добавлен ${where}.`,
+      `✅ Телефон …${p.imeiLast4}${p.label ? ` («${p.label}»)` : ''} добавлен ${where}.` +
+        (card ? `\n${cardLine(card)}` : ''),
       { reply_markup: mainMenu() },
     );
   } catch (err) {
@@ -339,22 +389,56 @@ export async function onPreparedDeleteConfirm(ctx: AppContext, phoneId: string):
 }
 
 // «▶️ В работу» — перевод подготовленного телефона в активные (лимит ≤3).
+// С 01.11.2026 сначала спрашиваем карту для оплаты: в работу телефон уходит
+// только вместе с ней. Лимит проверяем ДО вопроса, чтобы не просить цифры зря.
 export async function onPreparedToWork(ctx: AppContext, phoneId: string): Promise<void> {
   if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
+  const rows = await db
+    .select({ imei: phones.imeiLast4, label: phones.label })
+    .from(phones)
+    .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+    .limit(1);
+  const p = rows[0];
+  if (!p) {
+    await ctx.reply('Телефон не найден среди подготовленных.', { reply_markup: mainMenu() });
+    return;
+  }
+  const act = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(phones)
+    .where(eq(phones.status, 'active'));
+  if ((act[0]?.n ?? 0) >= 3) {
+    await ctx.reply('⚠️ Уже 3 активных телефона. Сначала выведи один.', { reply_markup: mainMenu() });
+    return;
+  }
+  ctx.session.flow = { kind: 'prep_card', phoneId };
+  await askCard(ctx, `…${p.imei}${p.label ? ` «${p.label}»` : ''}`);
+}
+
+/** 4 цифры карты → перевод из резерва в работу одним обновлением. */
+export async function onPrepCard(ctx: AppContext, text: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'prep_card') return;
+  const card = parseCardLast4(text);
+  if (!card) return void (await badCard(ctx));
+  ctx.session.flow = undefined;
   try {
     const upd = await db
       .update(phones)
-      .set({ status: 'active', connectedAt: new Date() })
-      .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+      .set({ status: 'active', connectedAt: new Date(), cardLast4: card })
+      .where(and(eq(phones.id, flow.phoneId), eq(phones.status, 'prepared')))
       .returning({ imei: phones.imeiLast4 });
     if (upd.length === 0) {
-      await ctx.reply('Телефон не найден среди подготовленных.', { reply_markup: mainMenu() });
+      await ctx.reply('Телефон не найден среди подготовленных (возможно, уже в работе).', {
+        reply_markup: mainMenu(),
+      });
       return;
     }
-    await ctx.reply(`▶️ Телефон …${upd[0]!.imei} введён в работу (отсчёт жизни — с этого момента).`, {
-      reply_markup: mainMenu(),
-    });
+    await ctx.reply(
+      `▶️ Телефон …${upd[0]!.imei} введён в работу (отсчёт жизни — с этого момента).\n${cardLine(card)}`,
+      { reply_markup: mainMenu() },
+    );
   } catch (err) {
     const msg = String(err);
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
@@ -454,11 +538,17 @@ export async function listPhones(ctx: AppContext): Promise<void> {
         `🕒 <b>Последняя: ${what} ${sum} ${mark} · ${fmtMsk(new Date(last.at))}</b> (${agoText(last.at, now)} назад)`,
       );
     }
+    lines.push(cardLine(p.cardLast4));
     if (slot) lines.push(slotLine(slot, now));
     if ((s?.furBig ?? 0) > 0) lines.push('❗️ Furious €105 уже был — второй не делать');
     // у каждого: подробная инфо (история+разбивка) и вывод
+    // Ряд на телефон: история, карта (указать или сменить), вывод. Телефон
+    // назван в первой кнопке — остальные короткие, чтобы ряд влез на экран.
     kb.text(`📜 …${p.imeiLast4}`, `${HIST_CB}${p.id}`);
-    if (allowKill) kb.text(`☠️ Вывести …${p.imeiLast4}`, `${KILL_CB}${p.id}`);
+    if (allowKill) {
+      kb.text(p.cardLast4 ? "💳 Карта" : "💳 Указать карту", `${PCARD_CB}${p.id}`);
+      kb.text("☠️ Вывести", `${KILL_CB}${p.id}`);
+    }
     kb.row();
   }
   lines.push(LINE);
@@ -487,6 +577,41 @@ function slotLine(slot: PhoneSlot, now: Date): string {
       `⏳ €${BIG_EUR} — ${whenText(slot.bigAt!, now)} · €${SMALL_EUR} — ${whenText(slot.smallAt!, now)}`,
   };
   return byPhase[slot.phase]();
+}
+
+// «💳 Карта» в «☎️ Телефоны» — указать карту у работающего телефона или сменить.
+export async function onPhoneCardAsk(ctx: AppContext, phoneId: string): Promise<void> {
+  if (!(await requirePrivate(ctx))) return;
+  if (!(await requireOperator(ctx))) return;
+  const rows = await db
+    .select({ imei: phones.imeiLast4, label: phones.label, card: phones.cardLast4 })
+    .from(phones)
+    .where(and(eq(phones.id, phoneId), eq(phones.status, 'active')))
+    .limit(1);
+  const p = rows[0];
+  if (!p) {
+    await ctx.reply('Телефон уже не в работе.', { reply_markup: mainMenu() });
+    return;
+  }
+  ctx.session.flow = { kind: 'phone_card', phoneId };
+  await askCard(ctx, `…${p.imei}${p.label ? ` «${p.label}»` : ''}`, p.card);
+}
+
+export async function onPhoneCardText(ctx: AppContext, text: string): Promise<void> {
+  const flow = ctx.session.flow;
+  if (flow?.kind !== 'phone_card') return;
+  const card = parseCardLast4(text);
+  if (!card) return void (await badCard(ctx));
+  ctx.session.flow = undefined;
+  const upd = await db
+    .update(phones)
+    .set({ cardLast4: card })
+    .where(and(eq(phones.id, flow.phoneId), eq(phones.status, 'active')))
+    .returning({ imei: phones.imeiLast4 });
+  await ctx.reply(
+    upd.length ? `✅ Телефон …${upd[0]!.imei}: ${cardLine(card)}` : 'Телефон уже не в работе.',
+    { reply_markup: mainMenu() },
+  );
 }
 
 // Спросить подтверждение ручного вывода телефона.

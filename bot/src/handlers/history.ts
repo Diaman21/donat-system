@@ -7,6 +7,7 @@ import { requireOperator } from './start.js';
 import { fmtMsk } from '../format.js';
 import { PHONE_MARK, PHONE_STATE } from './menus.js';
 import { paidEur, paidUnits } from './money.js';
+import { cardLine } from './card4.js';
 
 export const HIST_CB = 'hist:'; // + phoneId
 
@@ -88,6 +89,7 @@ export async function showPhoneHistory(ctx: AppContext, phoneId: string): Promis
 
   const head = [
     `📜 История …${ph.imeiLast4}${label} — ${statusLabel}`,
+    cardLine(ph.cardLast4),
     `Всего: ${items.length} покупок на €${total.toFixed(2)}`,
     tanks.c > 0 ? `🎮 Танки: ${tanks.c} покупок на €${tanks.sum.toFixed(2)}` : null,
     vk.c > 0 ? `🗳 ВК: ${vk.c} покупок на €${vk.sum.toFixed(2)} (${vk.votes} голосов)` : null,
