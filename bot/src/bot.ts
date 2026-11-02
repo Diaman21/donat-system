@@ -64,7 +64,14 @@ import { showVkReport } from './handlers/vk.js';
 import { showCorridor } from './handlers/corridor.js';
 import { showLearn } from './handlers/learn.js';
 import { onPeriodCallback, PER_CB } from './handlers/period.js';
-import { showAccounts, onAccountsCallback, onAccountText, ACC_CB } from './handlers/accounts.js';
+import {
+  showAccounts,
+  onAccountsCallback,
+  onAccountText,
+  isAccountsTopicText,
+  onTopicAccount,
+  ACC_CB,
+} from './handlers/accounts.js';
 import {
   showCard,
   onCardCallback,
@@ -111,16 +118,24 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   // В группах бот реагирует ТОЛЬКО на команды (/...) и inline-кнопки
   // (просмотр: /stats, /phones, /recent, /report). Обычные сообщения и
   // ввод-флоу в группе игнорируются — ввод ведётся в личке.
+  // Исключение (02.11.2026): текст в теме «👤 Аккаунты» — это новый аккаунт.
   bot.use(async (ctx, next) => {
     if (ctx.chat && ctx.chat.type !== 'private') {
       const isCommand = ctx.message?.text?.startsWith('/') ?? false;
       const isCallback = ctx.callbackQuery !== undefined;
-      if (!isCommand && !isCallback) return;
+      if (!isCommand && !isCallback && !isAccountsTopicText(ctx)) return;
     }
     await next();
   });
 
   bot.use(loadUser);
+
+  // Аккаунт сообщением прямо в теме — раньше роутинга по flow: в группе
+  // сессия ввода не нужна, а текст там иначе ушёл бы в «Не понял».
+  bot.on('message:text', async (ctx, next) => {
+    if (isAccountsTopicText(ctx)) return onTopicAccount(ctx);
+    await next();
+  });
 
   // Команды
   bot.command('start', handleStart);

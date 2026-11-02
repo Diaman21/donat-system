@@ -155,17 +155,90 @@ export async function onAccountText(ctx: AppContext, text: string): Promise<void
   const user = ctx.dbUser;
   if (!user) return;
   ctx.session.flow = undefined;
+  const r = await createAccount(ctx.api, user.id, user.username, body);
+  await ctx.reply(
+    r === null
+      ? '✅ Этот аккаунт уже добавлен — второй раз не записываю.'
+      : `✅ Аккаунт #${r.num} добавлен${r.posted ? ' и опубликован в «👤 Аккаунты»' : ''}. Готово к регистрации: ${r.count}.`,
+    { reply_markup: mainMenu() },
+  );
+}
+
+/**
+ * Записать аккаунт и опубликовать в теме. null — такой же текст от того же
+ * человека уже записан за последние 10 минут: повторная доставка апдейта
+ * Telegram или двойная отправка не создают второй аккаунт (дубль опаснее потери).
+ */
+async function createAccount(
+  api: Api,
+  userId: string,
+  username: string | null,
+  body: string,
+): Promise<{ num: number; count: number; posted: boolean } | null> {
   const ins = (await db.execute(sql`
-    insert into accounts (text, created_by) values (${body}, ${user.id})
+    insert into accounts (text, created_by)
+    select ${body}, ${userId}::uuid
+    where not exists (select 1 from accounts where created_by = ${userId}::uuid and text = ${body}
+                        and created_at > now() - interval '10 minutes')
     returning id::text id, num::int num, created_at`)) as unknown as { id: string; num: number; created_at: string }[];
-  const a = ins[0]!;
-  const acc: PostAccount = { num: Number(a.num), text: body, author: user.username, createdAt: new Date(a.created_at) };
+  const a = ins[0];
+  if (!a) return null;
+  const acc: PostAccount = { num: Number(a.num), text: body, author: username, createdAt: new Date(a.created_at) };
   const count = await readyCount();
-  const msgId = await postToTopic(ctx.api, readyPost(acc, count));
+  const msgId = await postToTopic(api, readyPost(acc, count));
   if (msgId) await db.execute(sql`update accounts set topic_message_id = ${msgId} where id = ${a.id}`);
-  await ctx.reply(`✅ Аккаунт #${acc.num} добавлен${msgId ? ' и опубликован в «👤 Аккаунты»' : ''}. Готово к регистрации: ${count}.`, {
-    reply_markup: mainMenu(),
-  });
+  return { num: acc.num, count, posted: msgId !== null };
+}
+
+// ---------- Аккаунт сообщением прямо в теме (02.11.2026) ----------
+//
+// Оператору удобнее писать аккаунт прямо в тему «👤 Аккаунты», а бот в группе
+// обычные сообщения не читает — и 02.11 так «потерялись» несколько аккаунтов:
+// в теме они были, а в базе (и в списке «👤 Акки») — 0. Теперь сообщение
+// оператора/модератора в ЭТОЙ теме = новый аккаунт: бот записывает его, ставит
+// на место свой пост «👤 Аккаунт #N» (с номером и кнопками у владельца), а
+// исходное сообщение удаляет, чтобы в теме не было двух копий.
+// Одно сообщение — один аккаунт. Команды («/…») сюда не попадают.
+
+/** Сообщение — текст в теме «👤 Аккаунты» нашей группы, не команда. */
+export function isAccountsTopicText(ctx: AppContext): boolean {
+  const m = ctx.message;
+  const topic = Number(env.topicAccounts);
+  return (
+    !!m?.text &&
+    !m.text.startsWith('/') &&
+    !ctx.from?.is_bot &&
+    String(ctx.chat?.id) === String(env.groupChatId) &&
+    Number.isInteger(topic) &&
+    topic > 0 &&
+    m.message_thread_id === topic
+  );
+}
+
+export async function onTopicAccount(ctx: AppContext): Promise<void> {
+  const user = ctx.dbUser;
+  // Посторонние в теме (если появятся) аккаунтов не добавляют — молча.
+  if (!user || (user.role !== 'operator' && user.role !== 'moderator')) return;
+  const m = ctx.message!;
+  const body = m.text!.trim();
+  const topic = inTopic('accounts');
+  if (!body) return;
+  if (body.length > 3000) {
+    await ctx.reply('⚠️ Слишком длинно для одного аккаунта (до 3000 символов) — не записал.', {
+      ...topic,
+      reply_parameters: { message_id: m.message_id },
+    });
+    return;
+  }
+  const r = await createAccount(ctx.api, user.id, user.username, body);
+  if (r === null) return; // повтор того же сообщения — уже записан
+  if (!r.posted) return; // свой пост не вышел — исходное сообщение оставляем, чтобы не потерять
+  try {
+    await ctx.api.deleteMessage(m.chat.id, m.message_id);
+  } catch (err) {
+    // Нет права удалять — останутся оба сообщения, но аккаунт уже в базе.
+    console.error('Не удалось удалить исходное сообщение аккаунта:', err);
+  }
 }
 
 // ---------- Зарегистрировать ----------
