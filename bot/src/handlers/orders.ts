@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { InlineKeyboard } from 'grammy';
 import { db } from '../db/client.js';
 import { orderQueue, purchases, users, type PurchaseResultValue } from '../db/schema.js';
@@ -17,6 +17,7 @@ import { fmtMsk } from '../format.js';
 import { env } from '../config.js';
 import { inTopic } from '../group.js';
 import { PER_CB } from './period.js';
+import { teamMentions, countOpen } from './team.js';
 
 // Итоги отчётного периода и за всё время (period.ts, 22.10.2026) — под списком
 // заказов: и в личке, и в группе (обнулять можно только в личке).
@@ -137,18 +138,6 @@ export async function closeOrderIfDone(
   };
 }
 
-// Кого тегать в группе — операторы и модераторы (в группе @упоминание реально пингует).
-export async function teamMentions(): Promise<string> {
-  const team = await db
-    .select({ username: users.username })
-    .from(users)
-    .where(and(inArray(users.role, ['operator', 'moderator']), eq(users.isActive, true)));
-  return team
-    .filter((u) => u.username)
-    .map((u) => `@${u.username}`)
-    .join(' ');
-}
-
 // Уведомление в группу о новом заказе. Ошибка отправки не должна ломать
 // сохранение заказа — он уже в базе, а группа просто не получит пинг.
 async function notifyGroupNewOrder(
@@ -237,14 +226,6 @@ export async function onOrderText(ctx: AppContext, text: string): Promise<void> 
   }
   ctx.session.flow = undefined;
   await createOrder(ctx, body);
-}
-
-export async function countOpen(): Promise<number> {
-  const r = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(orderQueue)
-    .where(eq(orderQueue.status, 'open'));
-  return r[0]?.c ?? 0;
 }
 
 // «📥 Заказы» — открытые заказы + счётчики выполненных.

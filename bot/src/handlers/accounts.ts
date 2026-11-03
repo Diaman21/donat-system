@@ -8,7 +8,7 @@ import { fmtMsk } from '../format.js';
 import { requireOperator } from './start.js';
 import { requirePrivate, cancelKb, CANCEL_CB } from './common.js';
 import { mainMenu, menuFor } from './menus.js';
-import { teamMentions } from './orders.js';
+import { teamMentions } from './team.js';
 import {
   readyPost,
   registeredPost,

@@ -12,7 +12,7 @@
 | База | Neon (Postgres), строка подключения в `DATABASE_URL` | нет |
 | Секреты | `.env` локально + Vercel → Settings → Environment Variables | нет |
 | Ежедневный бэкап | группа «Pattern_analyst 🧮», 12:05 МСК (JSON + CSV); восстановление — `npm run restore-drill` (см. db-schema.md) | нет |
-| Напоминания о слотах €100 | cron-job.org (аккаунт владельца) → `/api/cron-slots` каждые 10 мин, секрет `SLOTS_SECRET` | нет |
+| Напоминания о слотах €100 | cron-job.org (аккаунт владельца) → `/api/cron-slots` каждые 15 мин в 09–23 МСК, секрет `SLOTS_SECRET` | нет |
 
 ⚠️ Храни копию `.env` в менеджере паролей: в git его нет и быть не должно.
 
@@ -86,7 +86,9 @@
 2. Vercel → проект → Settings → Environment Variables → `SLOTS_SECRET` = эта строка
    (Production) → Redeploy. В локальный `.env` — тоже (для проверки).
 3. cron-job.org → Create cronjob:
-   - URL `https://donat-system.vercel.app/api/cron-slots`, расписание — каждые 10 минут;
+   - URL `https://donat-system.vercel.app/api/cron-slots`, расписание — Custom: минуты
+     0/15/30/45, часы 9–23, часовой пояс Europe/Moscow (cron `*/15 9-23 * * *`).
+     Чаще не нужно: каждый вызов тратит процессор из общего лимита Vercel;
    - Advanced → Headers: `Authorization` = `Bearer <секрет>`;
    - Notifications: при сбоях — на почту владельца.
 4. Проверка без отправки:

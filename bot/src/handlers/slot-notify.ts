@@ -1,6 +1,5 @@
 import type { Api } from 'grammy';
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { pg } from '../db/pg.js';
 import type { PurchaseResultValue } from '../db/schema.js';
 import { env } from '../config.js';
 import { inTopic } from '../group.js';
@@ -8,16 +7,21 @@ import { fmtMsk } from '../format.js';
 import { parsePhoneModel, modelGroup } from './phone-model.js';
 import { BIG_EUR, WITHDRAW_DAYS } from './interval.js';
 import { slotsToNotify, inWorkHours, type PhoneInput } from './slots.js';
-import { teamMentions, countOpen } from './orders.js';
+import { teamMentions, countOpen } from './team.js';
 
 // Напоминания о слотах под €100 (19.10.2026). Вызывается внешним будильником
-// cron-job.org каждые ~10 минут через /api/cron-slots: кроны Vercel Hobby
-// бывают только раз в сутки. Логика «кому и когда» — в slots.ts (с тестами).
+// cron-job.org (каждые 15 минут, 09–23 МСК) через /api/cron-slots: кроны Vercel
+// Hobby бывают только раз в сутки. Логика «кому и когда» — в slots.ts (с тестами).
+// ⚠️ Каждый тик — процессорное время из бесплатного лимита Vercel (общего на все
+// проекты; при 100% всё ставится на паузу). Сюда не тянуть тяжёлые модули:
+// заказы/меню/drizzle/grammy — нет, база — голым драйвером pg (03.11.2026,
+// лимит дошёл до 75%; drizzle один грузится ~330 мс на каждый холодный вызов).
 //
 // Правила (решение владельца 19.10.2026):
 //   - только слоты под €100, только когда есть открытые заказы;
 //   - только в рабочий день 09:00–24:00 МСК; открывшиеся ночью приходят
-//     первым сообщением после 09:00 (будильник тикает и ночью, но молчит);
+//     первым сообщением после 09:00 (ночью будильник не вызывается, а если
+//     вызовут — молчит);
 //   - одно напоминание на слот: новая покупка на телефоне — новый слот.
 
 /** Ключ в bot_sessions: «телефон → id покупки, по которой уже напомнили». */
@@ -25,7 +29,17 @@ const NOTIFIED_KEY = 'cron:slot-notify';
 
 /** Активные телефоны с последней покупкой и списаниями — для экрана и напоминаний. */
 export async function loadActivePhones(): Promise<PhoneInput[]> {
-  const rows = (await db.execute(sql`
+  const rows = await pg<
+    {
+      id: string;
+      imei: string;
+      label: string | null;
+      // строка в процессе бота, Date в будильнике (см. pg.ts) — читаем через new Date
+      first_at: string | Date | null;
+      last: { id: string; at: string; result: PurchaseResultValue } | null;
+      charges: { at: string; amount: number }[];
+    }[]
+  >`
     select ph.id::text id, ph.imei_last4 imei, ph.label,
       (select min(q.purchased_at) from purchases q where q.phone_id = ph.id) first_at,
       (select row_to_json(l) from (
@@ -37,14 +51,7 @@ export async function loadActivePhones(): Promise<PhoneInput[]> {
          from purchases q join purchase_categories c on c.id = q.category_id
         where q.phone_id = ph.id and q.result = 'done' and c.code = 'game_donate'
           and q.purchased_at > now() - interval '48 hours'), '[]'::json) charges
-    from phones ph where ph.status = 'active' order by ph.connected_at`)) as unknown as {
-    id: string;
-    imei: string;
-    label: string | null;
-    first_at: string | null;
-    last: { id: string; at: string; result: PurchaseResultValue } | null;
-    charges: { at: string; amount: number }[];
-  }[];
+    from phones ph where ph.status = 'active' order by ph.connected_at`;
   return rows.map((r) => ({
     id: r.id,
     imei: r.imei,
@@ -57,16 +64,15 @@ export async function loadActivePhones(): Promise<PhoneInput[]> {
 }
 
 async function readNotified(): Promise<Record<string, string>> {
-  const r = (await db.execute(sql`select value from bot_sessions where key = ${NOTIFIED_KEY}`)) as unknown as {
-    value: Record<string, string>;
-  }[];
+  const r = await pg<{ value: Record<string, string> }[]>`
+    select value from bot_sessions where key = ${NOTIFIED_KEY}`;
   return r[0]?.value ?? {};
 }
 
 async function writeNotified(value: Record<string, string>): Promise<void> {
-  await db.execute(sql`
+  await pg`
     insert into bot_sessions (key, value) values (${NOTIFIED_KEY}, ${JSON.stringify(value)}::jsonb)
-    on conflict (key) do update set value = excluded.value, updated_at = now()`);
+    on conflict (key) do update set value = excluded.value, updated_at = now()`;
 }
 
 export interface SlotRun {
@@ -78,8 +84,14 @@ export interface SlotRun {
 /**
  * Один «тик» будильника. dry — ничего не отправлять и не запоминать
  * (для проверки: /api/cron-slots?dry=1).
+ * getApi — Telegram поднимается, только когда есть что отправить: в большинстве
+ * тиков отправлять нечего, а загрузка grammy — это процессорное время Vercel.
  */
-export async function runSlotCheck(api: Api, now = new Date(), dry = false): Promise<SlotRun> {
+export async function runSlotCheck(
+  getApi: () => Promise<Api>,
+  now = new Date(),
+  dry = false,
+): Promise<SlotRun> {
   if (!inWorkHours(now)) return { status: 'quiet-hours', phones: [] };
   const open = await countOpen();
   if (open === 0) return { status: 'no-orders', phones: [], open };
@@ -106,6 +118,7 @@ export async function runSlotCheck(api: Api, now = new Date(), dry = false): Pro
   ]
     .filter(Boolean)
     .join('\n');
+  const api = await getApi();
   await api.sendMessage(env.groupChatId, text, inTopic('orders'));
 
   // Запоминаем ПОСЛЕ отправки: не дошло — следующий тик повторит.
