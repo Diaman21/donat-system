@@ -9,6 +9,7 @@ import { requireOperator } from './start.js';
 import { requirePrivate, cancelKb, CANCEL_CB } from './common.js';
 import { mainMenu, menuFor } from './menus.js';
 import { teamMentions } from './team.js';
+import { isAccountsTopicMessage } from '../update-filter.js';
 import {
   readyPost,
   registeredPost,
@@ -201,18 +202,9 @@ async function createAccount(
 // Одно сообщение — один аккаунт. Команды («/…») сюда не попадают.
 
 /** Сообщение — текст в теме «👤 Аккаунты» нашей группы, не команда. */
+// Определение одно — в update-filter.ts: им же webhook отсекает лишнее до загрузки бота.
 export function isAccountsTopicText(ctx: AppContext): boolean {
-  const m = ctx.message;
-  const topic = Number(env.topicAccounts);
-  return (
-    !!m?.text &&
-    !m.text.startsWith('/') &&
-    !ctx.from?.is_bot &&
-    String(ctx.chat?.id) === String(env.groupChatId) &&
-    Number.isInteger(topic) &&
-    topic > 0 &&
-    m.message_thread_id === topic
-  );
+  return isAccountsTopicMessage(ctx.message, env);
 }
 
 export async function onTopicAccount(ctx: AppContext): Promise<void> {

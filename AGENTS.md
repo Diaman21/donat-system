@@ -179,11 +179,13 @@ TypeScript + grammY · Vercel Hobby (webhook, 2 крона). Роли: `customer
   тогда попадает в безопасную ветку.
 - Время и календарь МСК — **только** `format.ts` (`cycleDayMsk`: день 1 = день первой покупки).
 - Тесты — только чистая логика без `db/client.ts`/`config.ts`; страж `test-hygiene.test.ts`.
-  `npm test` (node --test + tsx), **193 теста**; `restore.test.ts` поднимает миграции в PGlite.
+  `npm test` (node --test + tsx), **196 тестов**; `restore.test.ts` поднимает миграции в PGlite.
 - Нигде нет `select()` без проекции по `purchases` — удаление колонки не ломает деплой.
 - Блоки сводки — в одном `Promise.all` (таймаут функции = единственная тихая потеря).
-- Vercel: импорты с `.js`, `webhookCallback(..., 'https')`, `vercel.json` формата
-  `functions`, Node закреплён `engines: 24.x`, сессии в БД.
+- Vercel: импорты с `.js`, `vercel.json` формата `functions`, Node закреплён `engines: 24.x`,
+  сессии в БД. **Процессор экономим** (лимит 4 ч/мес на все проекты): webhook читает апдейт
+  сам и болтовню группы отсекает ДО загрузки бота (`update-filter.ts` — менять вместе с фильтром
+  группы в `bot.ts`), остальное — в `webhookCallback`; будильник — без drizzle/grammy.
 - Локальный запуск — только с `TELEGRAM_BOT_TOKEN_DEV` (база при этом боевая!).
 - Бэкап (12:05, JSON всех таблиц + CSV) восстанавливается **скриптом**
   `npm run restore-drill` — проверено один в один. Откат Neon «на момент» — всего 6 ч.

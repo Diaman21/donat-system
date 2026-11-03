@@ -108,17 +108,13 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
 
   const bot = new Bot<AppContext>(token);
 
-  bot.use(
-    session({
-      initial: (): SessionData => ({}),
-      storage: new NeonSessionStore(),
-    }),
-  );
-
   // В группах бот реагирует ТОЛЬКО на команды (/...) и inline-кнопки
   // (просмотр: /stats, /phones, /recent, /report). Обычные сообщения и
   // ввод-флоу в группе игнорируются — ввод ведётся в личке.
   // Исключение (02.11.2026): текст в теме «👤 Аккаунты» — это новый аккаунт.
+  // Стоит ДО сессии: выброшенному сообщению незачем читать сессию из базы.
+  // Webhook отсекает такие ещё раньше, до загрузки бота (update-filter.ts) —
+  // меняя здесь, поменяй и там.
   bot.use(async (ctx, next) => {
     if (ctx.chat && ctx.chat.type !== 'private') {
       const isCommand = ctx.message?.text?.startsWith('/') ?? false;
@@ -127,6 +123,13 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
     }
     await next();
   });
+
+  bot.use(
+    session({
+      initial: (): SessionData => ({}),
+      storage: new NeonSessionStore(),
+    }),
+  );
 
   bot.use(loadUser);
 
