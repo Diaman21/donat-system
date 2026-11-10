@@ -98,6 +98,16 @@ import {
 import { notifyModerator } from './notify.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
+// Чьи кнопки НЕ «отжимать» после нажатия:
+//   - переключатель периодов /stats, счётчик ВК-мультизакупа (pur:cnt:) и
+//     проводник отчёта (rep:) сами редактируют своё сообщение;
+//   - списки «☎️ Телефоны», «🧰 Подготовленные», «📜 История» (10.11.2026):
+//     после «📜» у одного телефона кнопки остальных не должны пропадать.
+//     Повтор безопасен — вывод, карта и ввод в работу проверяют статус телефона.
+// ⚠️ Префиксы подтверждений (killc:, prepdelc:) сюда не попадают: они не
+// начинаются с kill: / prepdel: — их клавиатура снимается, как и должна.
+const KEEP_KEYBOARD = [STATS_CB, CB.cnt, REP_CB, HIST_CB, PCARD_CB, KILL_CB, PREP_CB, PREPDEL_CB];
+
 // token можно передать явно — этим пользуется локальный запуск (src/index.ts),
 // чтобы поднять ОТДЕЛЬНОГО тестового бота и не снять webhook у боевого.
 // На Vercel аргумент не передаётся, берётся боевой TELEGRAM_BOT_TOKEN.
@@ -163,16 +173,15 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   // Кнопки главного меню. Матчим по СЛОВУ, без привязки к эмодзи —
   // чтобы старые закешированные кнопки (со старыми иконками) тоже работали
   // и смена иконок в будущем не ломала роутинг.
-  // «🛒 Без заказа» — разогрев и всё, что не по заказу. /Закупка$/ оставлен для
-  // старых закешированных клавиатур со «🛒 Закупка».
+  // «🛒 Без заказа» — разогрев и всё, что не по заказу.
+  // Старые псевдонимы («Закупка», «Заказ», «Аккаунты») убраны 10.11.2026: меню
+  // присылается заново с каждым ответом, старых клавиатур давно нет, а обычное
+  // слово «Заказ» в сообщении запускало добавление заказа.
   bot.hears(/Без заказа$/, startPurchaseStandalone);
-  bot.hears(/Закупка$/, startPurchaseStandalone);
   bot.hears(/Телефон$/, startAddPhone); // «Телефон» (добавить)
   bot.hears(/Телефоны$/, listPhones); // «Телефоны» (список)
-  // «👤 Акки» — с 02.11.2026; «Аккаунты» — для закешированных старых клавиатур.
-  bot.hears(/(Акки|Аккаунты)$/, showAccounts);
-  bot.hears(/Заказы$/, listOrders); // «📥 Заказы» — раньше «📝 Заказ», чтобы не путались
-  bot.hears(/Заказ$/, startAddOrder); // старая кнопка «📝 Заказ» — на всякий случай
+  bot.hears(/Акки$/, showAccounts); // «👤 Акки» — с 02.11.2026
+  bot.hears(/Заказы$/, listOrders);
   bot.hears(/Подготовленные$/, listPrepared);
   bot.hears(/Поиск по IMEI$/, startFindPhone);
   bot.hears(/Статистика$/, showStats);
@@ -186,20 +195,15 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
     try {
-      await ctx.answerCallbackQuery();
-
       // «Отжимаем» кнопки нажатого сообщения — убираем клавиатуру, чтобы
       // нельзя было нажать повторно и было видно, что шаг пройден.
-      // Исключение: переключатель периодов /stats сам редактирует это сообщение.
-      // Счётчик ВК-мультизакупа (pur:cnt:) и проводник отчёта (rep:) сами
-      // редактируют своё сообщение — не «отжимаем» у них клавиатуру.
-      if (
-        !data.startsWith(STATS_CB) &&
-        !data.startsWith(CB.cnt) &&
-        !data.startsWith(REP_CB)
-      ) {
-        await ctx.editMessageReplyMarkup().catch(() => {});
-      }
+      // Ответ на нажатие и снятие клавиатуры — одновременно (10.11.2026): это
+      // два запроса к Telegram, последовательно они задерживали каждую кнопку.
+      const keep = KEEP_KEYBOARD.some((p) => data.startsWith(p));
+      await Promise.all([
+        ctx.answerCallbackQuery(),
+        keep ? undefined : ctx.editMessageReplyMarkup().catch(() => {}),
+      ]);
 
       if (data === CANCEL_CB) return void (await handleCancel(ctx));
       if (data === DELLAST_CB) return void (await confirmDeleteLast(ctx));
@@ -298,6 +302,12 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
       }
     } catch (err) {
       console.error('Ошибка в callback:', err);
+      // Модератору — как в bot.catch ниже: ошибка кнопки туда не доходит (её
+      // ловим здесь), и до 10.11.2026 о сбоях кнопок владелец не узнавал.
+      await notifyModerator(
+        ctx.api,
+        `⚠️ Ошибка кнопки «${data.slice(0, 40)}»:\n${String(err).slice(0, 600)}`,
+      ).catch(() => {});
       // ⚠️ НЕ пишем «попробуй заново». Запись покупки идёт ПЕРВОЙ, а уже после
       // неё — закрытие заказа, подсказка, ответ и пост в группу. Упади что-то
       // на этих шагах, покупка УЖЕ в базе: «попробуй заново» заставило бы
