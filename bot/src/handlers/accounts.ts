@@ -8,13 +8,14 @@ import { fmtMsk } from '../format.js';
 import { requireOperator } from './start.js';
 import { requirePrivate, cancelKb, CANCEL_CB } from './common.js';
 import { mainMenu, menuFor } from './menus.js';
-import { teamMentions } from './team.js';
+import { operatorMentions } from './team.js';
 import { isAccountsTopicMessage } from '../update-filter.js';
 import {
   readyPost,
   registeredPost,
   cancelledPost,
   stockAlert,
+  stockLevel,
   stockAlertText,
   type PostAccount,
 } from './accounts-calc.js';
@@ -100,11 +101,25 @@ async function updateTopicPost(api: Api, msgId: number | null, text: string): Pr
   await postToTopic(api, text);
 }
 
+// Тегаем только оператора — аккаунты делает Тим (решение владельца 10.11.2026).
 async function alertIfLow(api: Api, before: number, after: number): Promise<void> {
   const alert = stockAlert(before, after);
   if (!alert) return;
-  const mentions = await teamMentions();
-  await postToTopic(api, stockAlertText(alert, mentions));
+  await postToTopic(api, stockAlertText(alert, await operatorMentions()));
+}
+
+/**
+ * Ежедневное напоминание (сводка 12:00, с 10.11.2026): пока готовых ≤1 —
+ * каждый день тег оператору в теме «👤 Аккаунты». Добавили, стало 2+ — null.
+ */
+export async function accountsReminderText(): Promise<string | null> {
+  const level = stockLevel(await readyCount());
+  return level ? stockAlertText(level, await operatorMentions()) : null;
+}
+
+export async function remindAccounts(api: Api): Promise<void> {
+  const text = await accountsReminderText();
+  if (text) await postToTopic(api, text);
 }
 
 // ---------- Экран ----------

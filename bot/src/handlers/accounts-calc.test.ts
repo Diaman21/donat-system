@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stockAlert, stockAlertText, readyPost, registeredPost } from './accounts-calc.js';
+import { stockAlert, stockLevel, stockAlertText, readyPost, registeredPost } from './accounts-calc.js';
+
+test('аккаунты: ежедневное напоминание — пока готовых ≤1, при 2+ молчим', () => {
+  assert.equal(stockLevel(0), 'empty');
+  assert.equal(stockLevel(1), 'low');
+  assert.equal(stockLevel(2), null);
+  assert.equal(stockLevel(10), null);
+});
 
 test('аккаунты: тегаем только при переходе через порог вниз', () => {
   assert.equal(stockAlert(3, 2), null);

@@ -11,7 +11,7 @@ import {
 import { weeklyLines } from '../src/handlers/weekly.js';
 import { cardSummaryLines } from '../src/handlers/card.js';
 import { periodSummaryLines } from '../src/handlers/period.js';
-import { accountsSummaryLines } from '../src/handlers/accounts.js';
+import { accountsSummaryLines, accountsReminderText, remindAccounts } from '../src/handlers/accounts.js';
 import { notifyModerator } from '../src/notify.js';
 
 // Vercel Cron: ежедневная сводка в группу.
@@ -64,6 +64,8 @@ export default async function handler(req: any, res: any): Promise<void> {
           accounts: inTopic('accounts').message_thread_id ?? null,
         },
         telegram,
+        // что ушло бы Тиму в тему «👤 Аккаунты» (null — аккаунтов 2+, молчим)
+        accountsReminder: await accountsReminderText().catch((e) => `ошибка: ${String(e).slice(0, 200)}`),
       }),
     );
     return;
@@ -123,6 +125,14 @@ export default async function handler(req: any, res: any): Promise<void> {
       text,
     ];
     await bot.api.sendMessage(env.groupChatId, parts.join('\n'), inTopic('summary'));
+
+    // Аккаунтов ≤1 — тег Тиму каждый день, пока не добавит (с 10.11.2026).
+    // Отдельно от сводки: сбой здесь не должен её отменять — она уже ушла.
+    try {
+      await remindAccounts(bot.api);
+    } catch (err) {
+      console.error('Напоминание об аккаунтах не ушло:', err);
+    }
     res.statusCode = 200;
     res.end('ok');
   } catch (err) {

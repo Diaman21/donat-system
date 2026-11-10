@@ -20,6 +20,16 @@ export function stockAlert(before: number, after: number): StockAlert | null {
   return null;
 }
 
+/**
+ * Ежедневное напоминание (12:00, решение владельца 10.11.2026): пока готовых
+ * ≤ порога — каждый день, без «перехода через порог». Стало больше — молчим.
+ */
+export function stockLevel(ready: number): StockAlert | null {
+  if (ready <= 0) return 'empty';
+  if (ready <= STOCK_LOW) return 'low';
+  return null;
+}
+
 export function stockAlertText(alert: StockAlert, mentions: string): string {
   const who = mentions ? ` ${mentions}` : '';
   const text: Record<StockAlert, string> = {
