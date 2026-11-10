@@ -39,6 +39,22 @@ export function stockAlertText(alert: StockAlert, mentions: string): string {
   return text[alert];
 }
 
+// Email аккаунта (10.11.2026): в карточках телефонов показываем только его, а не
+// весь текст. Текст аккаунта — как прислал Тим (строка «…: адрес@почта» в конце);
+// берём первый адрес, похожий на email.
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+
+export function accountEmail(text: string): string | null {
+  return text.match(EMAIL_RE)?.[0] ?? null;
+}
+
+/** Строка под телефоном: «📧 a@b, c@d»; email не нашёлся — «#N». Аккаунтов нет — null. */
+export function phoneAccountLine(accounts: { num: number; text: string }[]): string | null {
+  if (accounts.length === 0) return null;
+  const parts = accounts.map((a) => accountEmail(a.text) ?? `👤 Аккаунт #${a.num}`);
+  return `📧 ${parts.join(', ')}`;
+}
+
 export interface PostAccount {
   num: number;
   text: string;

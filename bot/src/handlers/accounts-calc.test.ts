@@ -1,6 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stockAlert, stockLevel, stockAlertText, readyPost, registeredPost } from './accounts-calc.js';
+import {
+  stockAlert,
+  stockLevel,
+  stockAlertText,
+  readyPost,
+  registeredPost,
+  accountEmail,
+  phoneAccountLine,
+} from './accounts-calc.js';
+
+test('аккаунты: email из текста — только он, в карточке телефона', () => {
+  // форма как у настоящих: 8 строк «Поле: значение», email в последней
+  const text = 'Vor Name: Anna\nNach Name: Muster\nGeb: 01.02.1990\nStraße: Hauptstraße 5\nPLZ: 10115\nOrt: Berlin\nLand: Germany\nEmail: anna.muster+1@mail.de';
+  assert.equal(accountEmail(text), 'anna.muster+1@mail.de');
+  assert.equal(accountEmail('без почты'), null);
+  assert.equal(phoneAccountLine([]), null);
+  assert.equal(phoneAccountLine([{ num: 7, text }]), '📧 anna.muster+1@mail.de');
+  assert.equal(phoneAccountLine([{ num: 7, text }, { num: 9, text: 'нет адреса' }]), '📧 anna.muster+1@mail.de, 👤 Аккаунт #9');
+});
 
 test('аккаунты: ежедневное напоминание — пока готовых ≤1, при 2+ молчим', () => {
   assert.equal(stockLevel(0), 'empty');

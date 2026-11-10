@@ -10,6 +10,7 @@ import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate, agoText } from '../format.js';
 import { RES_MARK } from './corridor.js';
 import { loadActivePhones } from './slot-notify.js';
+import { askAccountForPhone, phoneHasAccount, accountLinesByPhone } from './accounts.js';
 import { phoneSlot, type Phase, type PhoneSlot } from './slots.js';
 import { BIG_EUR, SMALL_EUR, WARMUP_DAYS, WITHDRAW_DAYS } from './interval.js';
 import { HIST_CB } from './history.js';
@@ -282,6 +283,9 @@ async function insertPhone(
         (card ? `\n${cardLine(card)}` : ''),
       { reply_markup: mainMenu() },
     );
+    // Последний шаг (10.11.2026): какой аккаунт на этом телефоне. Телефон уже
+    // сохранён — отказ или «Без аккаунта» его не теряют.
+    await askAccountForPhone(ctx, p.id, `…${p.imeiLast4}${p.label ? ` «${p.label}»` : ''}`);
   } catch (err) {
     const msg = String(err);
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
@@ -314,7 +318,12 @@ export async function listPrepared(ctx: AppContext): Promise<void> {
   }
 
   const allowWork = ctx.chat?.type === 'private';
-  const lines = prep.map((p) => `🧰 …${p.imeiLast4}${p.label ? ` «${p.label}»` : ''}`);
+  // Под телефоном — email аккаунта, если привязан (10.11.2026).
+  const accBy = await accountLinesByPhone();
+  const lines = prep.flatMap((p) => {
+    const acc = accBy.get(p.id);
+    return [`🧰 …${p.imeiLast4}${p.label ? ` «${p.label}»` : ''}`, ...(acc ? [`   ${acc}`] : [])];
+  });
   const kb = new InlineKeyboard();
   if (allowWork) {
     for (const p of prep) {
@@ -428,17 +437,22 @@ export async function onPrepCard(ctx: AppContext, text: string): Promise<void> {
       .update(phones)
       .set({ status: 'active', connectedAt: new Date(), cardLast4: card })
       .where(and(eq(phones.id, flow.phoneId), eq(phones.status, 'prepared')))
-      .returning({ imei: phones.imeiLast4 });
+      .returning({ imei: phones.imeiLast4, label: phones.label });
     if (upd.length === 0) {
       await ctx.reply('Телефон не найден среди подготовленных (возможно, уже в работе).', {
         reply_markup: mainMenu(),
       });
       return;
     }
+    const u = upd[0]!;
     await ctx.reply(
-      `▶️ Телефон …${upd[0]!.imei} введён в работу (отсчёт жизни — с этого момента).\n${cardLine(card)}`,
+      `▶️ Телефон …${u.imei} введён в работу (отсчёт жизни — с этого момента).\n${cardLine(card)}`,
       { reply_markup: mainMenu() },
     );
+    // Аккаунт — только если его ещё нет (обычно привязан, пока телефон был в резерве).
+    if (!(await phoneHasAccount(flow.phoneId))) {
+      await askAccountForPhone(ctx, flow.phoneId, `…${u.imei}${u.label ? ` «${u.label}»` : ''}`);
+    }
   } catch (err) {
     const msg = String(err);
     if (msg.includes('лимит активных') || msg.includes('max_active')) {
@@ -504,6 +518,8 @@ export async function listPhones(ctx: AppContext): Promise<void> {
   // Что и когда можно по правилам коридора — та же логика, что у напоминаний
   // о слотах и подсказки после покупки (slots.ts → interval.ts).
   const slotBy = new Map((await loadActivePhones()).map((p) => [p.id, p]));
+  // Email аккаунта на телефоне — только он, не весь текст (10.11.2026).
+  const accBy = await accountLinesByPhone();
   const now = new Date();
 
   // Кнопки вывода — только в личке (в группе список только для просмотра)
@@ -539,6 +555,8 @@ export async function listPhones(ctx: AppContext): Promise<void> {
       );
     }
     lines.push(cardLine(p.cardLast4));
+    const acc = accBy.get(p.id);
+    if (acc) lines.push(escHtml(acc));
     if (slot) lines.push(slotLine(slot, now));
     if ((s?.furBig ?? 0) > 0) lines.push('❗️ Furious €105 уже был — второй не делать');
     // у каждого: подробная инфо (история+разбивка) и вывод

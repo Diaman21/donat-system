@@ -17,6 +17,8 @@ import {
   stockAlert,
   stockLevel,
   stockAlertText,
+  accountEmail,
+  phoneAccountLine,
   type PostAccount,
 } from './accounts-calc.js';
 
@@ -356,10 +358,67 @@ export async function accountsOfPhone(phoneId: string): Promise<number[]> {
   return r.map((x) => Number(x.num));
 }
 
+// ---------- Аккаунт у телефона (10.11.2026) ----------
+// При добавлении телефона («➕📱 Телефон») и при вводе из резерва в работу, если
+// у телефона ещё нет аккаунта, — выбрать готовый. Кнопка ведёт в тот же
+// register(), что и «✅ Зарегистрирован» в «👤 Акки»: пост в теме, тег Тиму.
+
+/** Спросить, какой готовый аккаунт привязать к телефону. Готовых нет — одна строка. */
+export async function askAccountForPhone(ctx: AppContext, phoneId: string, phoneName: string): Promise<void> {
+  const ready = (await db.execute(sql`
+    select num::int num, text from accounts where status = 'ready' order by num limit 10`)) as unknown as {
+    num: number;
+    text: string;
+  }[];
+  if (ready.length === 0) {
+    await ctx.reply('👤 Готовых аккаунтов нет — привяжешь позже: «👤 Акки» → «✅ Зарегистрирован».', {
+      reply_markup: mainMenu(),
+    });
+    return;
+  }
+  const kb = new InlineKeyboard();
+  for (const a of ready) {
+    kb.text(`#${a.num} · ${accountEmail(a.text) ?? 'без email'}`, `${ACC_CB}ph:${a.num}:${phoneId}`).row();
+  }
+  kb.text('Без аккаунта', `${ACC_CB}skip`);
+  await ctx.reply(`👤 Какой аккаунт привязать к ${phoneName}?`, { reply_markup: kb });
+}
+
+export async function phoneHasAccount(phoneId: string): Promise<boolean> {
+  const r = (await db.execute(sql`
+    select exists(select 1 from accounts where phone_id = ${phoneId}::uuid and status = 'registered') x`)) as unknown as {
+    x: boolean;
+  }[];
+  return r[0]?.x === true;
+}
+
+/** Строка «📧 email» для каждого телефона в работе и в резерве — для списков. */
+export async function accountLinesByPhone(): Promise<Map<string, string>> {
+  const r = (await db.execute(sql`
+    select a.phone_id::text phone_id, a.num::int num, a.text
+    from accounts a join phones p on p.id = a.phone_id
+    where a.status = 'registered' and p.status in ('active', 'prepared')
+    order by a.num`)) as unknown as { phone_id: string; num: number; text: string }[];
+  const grouped = new Map<string, { num: number; text: string }[]>();
+  for (const x of r) grouped.set(x.phone_id, [...(grouped.get(x.phone_id) ?? []), { num: Number(x.num), text: x.text }]);
+  const out = new Map<string, string>();
+  for (const [id, list] of grouped) {
+    const line = phoneAccountLine(list);
+    if (line) out.set(id, line);
+  }
+  return out;
+}
+
 /** Роутинг callback'ов «acc:…». */
 export async function onAccountsCallback(ctx: AppContext, rest: string): Promise<void> {
   if (rest === 'add') return startAdd(ctx);
   if (rest === 'list') return showAccounts(ctx);
+  if (rest === 'skip') {
+    await ctx.reply('Ок, без аккаунта. Привязать позже — «👤 Акки» → «✅ Зарегистрирован».', {
+      reply_markup: mainMenu(),
+    });
+    return;
+  }
   const [action, numStr, phone] = rest.split(':');
   const num = Number(numStr);
   if (!Number.isInteger(num)) return;
