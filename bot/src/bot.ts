@@ -96,6 +96,8 @@ import {
   REP_CB,
 } from './handlers/report.js';
 import { notifyModerator } from './notify.js';
+import { showReportsHub, onReportsCallback } from './handlers/reports.js';
+import { RPT_CB, recentButton } from './handlers/menus.js';
 import type { PurchaseResultValue } from './db/schema.js';
 
 // Чьи кнопки НЕ «отжимать» после нажатия:
@@ -106,7 +108,8 @@ import type { PurchaseResultValue } from './db/schema.js';
 //     Повтор безопасен — вывод, карта и ввод в работу проверяют статус телефона.
 // ⚠️ Префиксы подтверждений (killc:, prepdelc:) сюда не попадают: они не
 // начинаются с kill: / prepdel: — их клавиатура снимается, как и должна.
-const KEEP_KEYBOARD = [STATS_CB, CB.cnt, REP_CB, HIST_CB, PCARD_CB, KILL_CB, PREP_CB, PREPDEL_CB];
+//   - хаб «📊 Отчёты» (rpt:) — можно посмотреть сводку, потом последние записи.
+const KEEP_KEYBOARD = [STATS_CB, CB.cnt, REP_CB, HIST_CB, PCARD_CB, KILL_CB, PREP_CB, PREPDEL_CB, RPT_CB];
 
 // token можно передать явно — этим пользуется локальный запуск (src/index.ts),
 // чтобы поднять ОТДЕЛЬНОГО тестового бота и не снять webhook у боевого.
@@ -184,10 +187,13 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
   bot.hears(/Заказы$/, listOrders);
   bot.hears(/Подготовленные$/, listPrepared);
   bot.hears(/Поиск по IMEI$/, startFindPhone);
+  bot.hears(/Отчёты$/, showReportsHub); // «📊 Отчёты» — с 10.11.2026
+  // Три кнопки, которые «📊 Отчёты» заменил: остаются на переходе — у кого на
+  // экране ещё старая клавиатура, первое нажатие должно сработать.
   bot.hears(/Статистика$/, showStats);
-  bot.hears(/ВК$/, showVkReport);
   bot.hears(/Последние$/, showRecent);
   bot.hears(/Отчёт$/, startReport);
+  bot.hears(/ВК$/, showVkReport);
   bot.hears(/Удалить последнюю$/, startDeleteLast);
   bot.hears(/Бюджет на карте$/, showCard);
 
@@ -245,6 +251,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
           }
         }
         return;
+      }
+      if (data.startsWith(RPT_CB)) {
+        return void (await onReportsCallback(ctx, data.slice(RPT_CB.length)));
       }
       if (data.startsWith(ACC_CB)) {
         return void (await onAccountsCallback(ctx, data.slice(ACC_CB.length)));
@@ -317,8 +326,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
       await ctx
         .reply(
           '⚠️ Что-то пошло не так.\n\n' +
-            'Запись МОГЛА пройти — сначала проверь «📋 Последние» (/recent) ' +
+            'Запись МОГЛА пройти — сначала проверь последние записи (кнопка ниже, /recent) ' +
             'и только потом вводи заново, иначе получится дубль.',
+          { reply_markup: recentButton() },
         )
         .catch(() => {});
     }
@@ -372,8 +382,9 @@ export function createBot(token: string = env.botToken): Bot<AppContext> {
     await err.ctx
       .reply(
         '⚠️ Что-то пошло не так, модератору отправлено уведомление.\n\n' +
-          'Если вводил закупку — проверь «📋 Последние» (/recent) перед тем, ' +
+          'Если вводил закупку — проверь последние записи (кнопка ниже, /recent) перед тем, ' +
           'как повторять: запись могла пройти.',
+        { reply_markup: recentButton() },
       )
       .catch(() => {});
   });

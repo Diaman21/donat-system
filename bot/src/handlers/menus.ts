@@ -1,4 +1,4 @@
-import { Keyboard } from 'grammy';
+import { InlineKeyboard, Keyboard } from 'grammy';
 import type { User, PhoneStatus } from '../db/schema.js';
 import type { AppContext } from '../context.js';
 
@@ -37,6 +37,10 @@ export const BTN = {
   phones: '☎️ Телефоны',
   prepared: '🧰 Подготовленные',
   find: '🔍 Поиск по IMEI',
+  // «📊 Отчёты» (10.11.2026) — одна кнопка вместо «Статистика», «Отчёт» и
+  // «Последние» (reports.ts). Их подписи ниже — только для роутинга старых
+  // клавиатур, в меню их нет.
+  reports: '📊 Отчёты',
   stats: '📊 Статистика',
   // ВК на паузе (Apple убрали приложения) — кнопки в меню нет с 02.11.2026,
   // отчёт остаётся по /vk. Вернётся ВК — вернуть BTN.vk в mainMenu().
@@ -65,18 +69,26 @@ export function mainMenu(): Keyboard {
     .text(BTN.phones)
     .text(BTN.prepared)
     .row()
-    .text(BTN.stats)
+    .text(BTN.reports) // вместо «Статистика», «Отчёт», «Последние» (10.11.2026)
     .text(BTN.accounts) // на месте «🗳 ВК» (просьба владельца 02.11.2026)
-    .text(BTN.recent)
-    .row()
-    .text(BTN.find)
     .text(BTN.card)
     .row()
-    .text(BTN.report)
+    .text(BTN.find)
     .text(BTN.delLast)
     .resized()
     .persistent();
 }
+
+/** Callback'и хаба «📊 Отчёты» (reports.ts): rpt:stats | rpt:days | rpt:recent. */
+export const RPT_CB = 'rpt:';
+
+/**
+ * Кнопка «📋 Последние записи» — в сообщениях «запись могла пройти, проверь»:
+ * после сбоя проверка в одно нажатие. Здесь, а не в reports.ts, чтобы
+ * purchase.ts не тянул за собой stats/report (циклический импорт на Vercel).
+ */
+export const recentButton = (): InlineKeyboard =>
+  new InlineKeyboard().text('📋 Последние записи', `${RPT_CB}recent`);
 
 // Reply-меню показываем только в личке (в группе оно мешает всем).
 export function menuFor(ctx: AppContext): Keyboard | undefined {

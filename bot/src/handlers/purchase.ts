@@ -687,7 +687,7 @@ export async function onNetSelected(ctx: AppContext, net: string): Promise<void>
     await ctx.reply(
       '✅ Эта закупка уже записана — пришло повторное нажатие (или Telegram ' +
         'доставил его дважды). Второй раз ничего не записываю.\n' +
-        'Проверить: «📋 Последние» (/recent).',
+        'Проверить: «📊 Отчёты» → «📋 Последние записи» (/recent).',
       { reply_markup: mainMenu() },
     );
     return;

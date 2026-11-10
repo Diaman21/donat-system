@@ -45,6 +45,10 @@
 - ⚠️ `pendingOrderId` сбрасывается при `/cancel` и входе в «🛒 Без заказа».
   ⚠️ Кнопку «Без заказа» не убирать: разогрев €2 и вся ВК идут без заказа.
   ⚠️ `orders.ts` НЕ импортирует `purchase.ts` (циклический импорт на Vercel-ESM).
+- **Меню (с 10.11.2026), 4 ряда:** Заказы · Без заказа / Телефон · Телефоны · Подготовленные /
+  **📊 Отчёты** · Акки · Бюджет на карте / Поиск по IMEI · Удалить последнюю. «📊 Отчёты»
+  (`reports.ts`) — хаб вместо трёх кнопок: 📊 Сводка (/stats) · 📅 По дням (/period) ·
+  📋 Последние записи (/recent); в сообщениях «запись могла пройти» — кнопка «📋 Последние записи».
 - **Отчёты:** `/stats` · `/period` · `/corridor` · `/learn` · `/vk` · `/find` · `/recent` ·
   `/history` · ↩️ удалить последнюю (с воскрешением телефона) · `/export` (модератор).
 - **💳 Бюджет на карте** (`/budget`, с 10.10.2026) — по нему решают, когда выкатывать.
@@ -219,7 +223,7 @@ donat-system/
                             report · history · recent · postmortem · export · backup ·
                             death · money · idem · phone-dup · phone-model · card · card-calc ·
                             verify-trend · slots · slot-notify · period · period-calc ·
-                            card4 · accounts · accounts-calc · menus · help
+                            card4 · accounts · accounts-calc · reports · menus · help
 ```
 > ⚠️ `AGENTS.md` не править руками — после правки `CLAUDE.md` пересобрать (команда — в
 > `docs/HANDOFF.md`).
