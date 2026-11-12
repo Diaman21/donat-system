@@ -348,7 +348,7 @@ nullable. Заполняется, когда закупку делают чер�
 |---|---|---|
 | `num` | `bigserial` UNIQUE | человеческий номер «#12»; он же в кнопках (два uuid в 64 байта callback не влезают) |
 | `text` | `text` CHECK 1–3000 | текст аккаунта как прислали |
-| `status` | `text` CHECK | `ready` → `registered` / `cancelled`; переход только из `ready` (повторное нажатие не меняет) |
+| `status` | `text` CHECK | `ready` → `registered` / `cancelled`; переход только из `ready` (повторное нажатие не меняет). Исключение (12.11.2026) — удаление телефона из резерва: `registered` → `ready` (отвязан, снова готов) или → `cancelled`, `phone_id` → NULL |
 | `created_by` / `created_at` | `uuid` / `timestamptz` | кто и когда добавил |
 | `registered_by` / `registered_at` | `uuid` / `timestamptz` | кто и когда зарегистрировал |
 | `phone_id` | `uuid` → `phones.id`, nullable | на какой телефон («без телефона» — NULL) |

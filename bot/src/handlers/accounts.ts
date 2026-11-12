@@ -1,5 +1,5 @@
 import { InlineKeyboard, type Api } from 'grammy';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AppContext } from '../context.js';
 import { env } from '../config.js';
@@ -407,6 +407,60 @@ export async function accountLinesByPhone(): Promise<Map<string, string>> {
     if (line) out.set(id, line);
   }
   return out;
+}
+
+// ---------- Удаление телефона из резерва (12.11.2026) ----------
+// Аккаунт ссылается на телефон, и база не даёт удалить телефон, пока ссылка есть
+// (так …9762 не удалялся несколько дней). Владелец решает при удалении:
+// аккаунт вернуть в готовые или отменить вместе с телефоном. Аккаунты не
+// удаляются никогда — только меняют статус, пост в теме правится.
+
+export type ReleaseMode = 'ready' | 'drop';
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const RELEASE_SET: Record<ReleaseMode, SQL> = {
+  ready: sql`status = 'ready', registered_by = null, registered_at = null`,
+  drop: sql`status = 'cancelled'`,
+};
+
+/** Зарегистрированные на телефон аккаунты: номер и email — для вопроса перед удалением. */
+export async function linkedAccounts(phoneId: string): Promise<{ num: number; email: string | null }[]> {
+  const r = (await db.execute(sql`
+    select num::int num, text from accounts where phone_id = ${phoneId}::uuid and status = 'registered'
+    order by num`)) as unknown as { num: number; text: string }[];
+  return r.map((x) => ({ num: Number(x.num), email: accountEmail(x.text) }));
+}
+
+/** Отвязать аккаунты от телефона внутри транзакции удаления. Возвращает номера. */
+export async function releasePhoneAccounts(tx: Tx, phoneId: string, mode: ReleaseMode): Promise<number[]> {
+  const r = (await tx.execute(sql`
+    update accounts set ${RELEASE_SET[mode]}, phone_id = null, updated_at = now()
+    where phone_id = ${phoneId}::uuid and status = 'registered'
+    returning num::int num`)) as unknown as { num: number }[];
+  return r.map((x) => Number(x.num));
+}
+
+/** После удаления: поправить посты аккаунтов в теме. Сбой поста удаление не отменяет. */
+export async function refreshReleasedPosts(
+  api: Api,
+  nums: number[],
+  mode: ReleaseMode,
+  user: string | null,
+): Promise<void> {
+  if (nums.length === 0) return;
+  try {
+    const count = await readyCount();
+    const post: Record<ReleaseMode, (a: AccRow) => string> = {
+      ready: (a) => readyPost(a, count),
+      drop: (a) => cancelledPost(a, user, new Date()),
+    };
+    for (const n of nums) {
+      const a = await loadByNum(n);
+      if (a) await updateTopicPost(api, a.topicMessageId, post[mode](a));
+    }
+  } catch (err) {
+    console.error('Посты аккаунтов после удаления телефона не обновлены:', err);
+  }
 }
 
 /** Роутинг callback'ов «acc:…». */

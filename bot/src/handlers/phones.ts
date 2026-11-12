@@ -10,7 +10,16 @@ import { buildPostMortem, postCycleToGroup } from './postmortem.js';
 import { fmtMsk, fmtMskDate, agoText } from '../format.js';
 import { RES_MARK } from './corridor.js';
 import { loadActivePhones } from './slot-notify.js';
-import { askAccountForPhone, phoneHasAccount, accountLinesByPhone } from './accounts.js';
+import {
+  askAccountForPhone,
+  phoneHasAccount,
+  accountLinesByPhone,
+  linkedAccounts,
+  releasePhoneAccounts,
+  refreshReleasedPosts,
+  type ReleaseMode,
+} from './accounts.js';
+import { fkBlocker } from '../db/phone-refs.js';
 import { phoneSlot, type Phase, type PhoneSlot } from './slots.js';
 import { BIG_EUR, SMALL_EUR, WARMUP_DAYS, WITHDRAW_DAYS } from './interval.js';
 import { HIST_CB } from './history.js';
@@ -352,21 +361,49 @@ export async function onPreparedDeleteAsk(ctx: AppContext, phoneId: string): Pro
     await ctx.reply('Телефон не найден среди подготовленных.', { reply_markup: mainMenu() });
     return;
   }
+  const name = `…${p.imei}${p.label ? ` «${p.label}»` : ''}`;
+  const head = `Удалить подготовленный телефон ${name} из списка?\n` +
+    'Он исчезнет насовсем (это резерв без покупок — истории не будет).';
+  // На телефоне аккаунт (12.11.2026) — без решения о нём база телефон не удалит.
+  const accs = await linkedAccounts(phoneId);
+  if (accs.length === 0) {
+    const kb = new InlineKeyboard()
+      .text('🗑 Да, удалить', `${PREPDELC_CB}${phoneId}`)
+      .text('❌ Отмена', CANCEL_CB);
+    await ctx.reply(head, { reply_markup: kb });
+    return;
+  }
+  const accList = accs.map((a) => `#${a.num} · ${a.email ?? 'без email'}`).join(', ');
   const kb = new InlineKeyboard()
-    .text('🗑 Да, удалить', `${PREPDELC_CB}${phoneId}`)
+    .text('🗑 Удалить, аккаунт — в готовые', `${PREPDELC_CB}${phoneId}:ready`)
+    .row()
+    .text('🗑 Удалить вместе с аккаунтом', `${PREPDELC_CB}${phoneId}:drop`)
+    .row()
     .text('❌ Отмена', CANCEL_CB);
   await ctx.reply(
-    `Удалить подготовленный телефон …${p.imei}${p.label ? ` «${p.label}»` : ''} из списка?\n` +
-      'Он исчезнет насовсем (это резерв без покупок — истории не будет).',
+    `${head}\n\n👤 На нём аккаунт: ${accList}. Что с ним сделать?\n` +
+      '• «в готовые» — вернётся в «👤 Акки», его можно привязать к другому телефону;\n' +
+      '• «вместе с аккаунтом» — аккаунт пометится отменённым (и пост в теме).',
     { reply_markup: kb },
   );
 }
 
+const RELEASED_TEXT: Record<ReleaseMode, (nums: string) => string> = {
+  ready: (n) => `👤 Аккаунт ${n} — снова в готовых («👤 Акки»).`,
+  drop: (n) => `👤 Аккаунт ${n} отменён.`,
+};
+
+/** Телефона уже нет среди подготовленных — откатить отвязку аккаунтов. */
+const PHONE_GONE = new Error('prepared phone gone');
+
 // Подтверждение удаления подготовленного: удаляем строку из БД.
 // Только prepared и только без покупок — история неприкосновенна.
-export async function onPreparedDeleteConfirm(ctx: AppContext, phoneId: string): Promise<void> {
+// rest = «<phoneId>» или «<phoneId>:ready|drop» (решение об аккаунте, 12.11.2026).
+export async function onPreparedDeleteConfirm(ctx: AppContext, rest: string): Promise<void> {
   if (!(await requirePrivate(ctx))) return;
   if (!(await requireOperator(ctx))) return;
+  const [phoneId = '', modeStr] = rest.split(':');
+  const mode: ReleaseMode | null = modeStr === 'ready' || modeStr === 'drop' ? modeStr : null;
 
   const bought = await db
     .select({ c: sql<number>`count(*)::int` })
@@ -381,18 +418,40 @@ export async function onPreparedDeleteConfirm(ctx: AppContext, phoneId: string):
     return;
   }
 
-  const del = await db
-    .delete(phones)
-    .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
-    .returning({ imei: phones.imeiLast4, label: phones.label });
-  if (del.length === 0) {
-    await ctx.reply('Телефон не найден среди подготовленных (возможно, уже удалён).', {
+  // Кнопка без решения об аккаунте (старое сообщение), а аккаунт есть — спросить заново.
+  if (!mode && (await linkedAccounts(phoneId)).length > 0) return onPreparedDeleteAsk(ctx, phoneId);
+
+  // Одной транзакцией: отвязать аккаунты и удалить телефон. Телефона нет — откат.
+  let done: { imei: string; label: string | null; nums: number[] };
+  try {
+    done = await db.transaction(async (tx) => {
+      const nums = mode ? await releasePhoneAccounts(tx, phoneId, mode) : [];
+      const del = await tx
+        .delete(phones)
+        .where(and(eq(phones.id, phoneId), eq(phones.status, 'prepared')))
+        .returning({ imei: phones.imeiLast4, label: phones.label });
+      if (!del[0]) throw PHONE_GONE;
+      return { ...del[0], nums };
+    });
+  } catch (err) {
+    if (err === PHONE_GONE) {
+      await ctx.reply('Телефон не найден среди подготовленных (возможно, уже удалён).', {
+        reply_markup: mainMenu(),
+      });
+      return;
+    }
+    // На телефон ссылается то, о чём удаление не знает: понятный ответ вместо
+    // «что-то пошло не так». Ничего не изменилось — транзакция откатилась.
+    const blocker = fkBlocker(err);
+    if (!blocker) throw err;
+    await ctx.reply(`⚠️ Не удалён: на телефон ссылается ${blocker}. Ничего не изменено — напиши владельцу.`, {
       reply_markup: mainMenu(),
     });
     return;
   }
-  const d = del[0]!;
-  await ctx.reply(`🗑 Подготовленный …${d.imei}${d.label ? ` «${d.label}»` : ''} удалён.`, {
+  if (mode) await refreshReleasedPosts(ctx.api, done.nums, mode, ctx.dbUser?.username ?? null);
+  const accLine = mode && done.nums.length > 0 ? `\n${RELEASED_TEXT[mode](done.nums.map((n) => `#${n}`).join(', '))}` : '';
+  await ctx.reply(`🗑 Подготовленный …${done.imei}${done.label ? ` «${done.label}»` : ''} удалён.${accLine}`, {
     reply_markup: mainMenu(),
   });
 }
