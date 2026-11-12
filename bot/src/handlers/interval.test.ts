@@ -16,6 +16,8 @@ import {
   WARN_FROM_DAY,
   withdrawStage,
   allowedAt,
+  betterAt,
+  PROTOCOL_GAP_H,
   type Charge,
 } from './interval.js';
 
@@ -435,4 +437,43 @@ test('allowedAt: согласовано с подсказкой — «не ра�
   const hint = nextPurchaseHint({ now: at(NOW), charges: c, result: 'done', dayOfCycle: 5, hadBattle: true, isPro: false }).join('\n');
   const t = allowedAt(c, 30, at(NOW), false);
   assert.ok(hint.includes('не раньше') && hint.includes(hhmmMsk(t)), hint);
+});
+
+// ---------- «лучше с» — запас до оптимума протокола (12.11.2026) ----------
+
+// КОНТРОЛЬНАЯ ТОЧКА: …1884 «белый 12» — €100 11.11 в 16:22 МСК, затем €30 через
+// 20.4 ч (€130 за сутки) → 💀. «Можно» было с 12:22, лучше — с 14:22 (22 ч).
+test('реальная смерть …1884: после сотни «можно с» 20 ч, «лучше с» 22 ч', () => {
+  const now = at('2026-11-11T13:22:00.000Z'); // 16:22 МСК
+  const charges = [ch('2026-11-11T13:22:00.000Z', 100)];
+  assert.equal(hhmmMsk(betterAt(charges, SMALL_EUR, now, false)!), '14:22');
+  assert.equal(hhmmMsk(betterAt(charges, 100, now, false)!), '14:22');
+  const lines = nextPurchaseHint({ now, charges, result: 'done' });
+  const i = lines.findIndex((l) => l.includes('без ограничений с завтра 12:22'));
+  assert.ok(i > 0, lines.join('\n'));
+  assert.equal(
+    lines[i + 1],
+    `   👌 лучше с завтра 14:22 — от ${PROTOCOL_GAP_H} ч, как в протоколе: ` +
+      `на ${CORRIDOR_MIN_H}–${PROTOCOL_GAP_H} ч при сумме за сутки от €${DANGER_EUR} запаса нет`,
+  );
+});
+
+test('«лучше с» не нужен, когда деньги влезают и так', () => {
+  const now = at('2026-09-11T09:00:00.000Z');
+  // После тридцатки ещё две тридцатки влезают сразу — запас для них не нужен.
+  assert.equal(betterAt([ch('2026-09-11T09:00:00.000Z', 30)], SMALL_EUR, now, true), null);
+  // Пустое окно — ни для какой суммы.
+  assert.equal(betterAt([], 100, now, true), null);
+});
+
+test('«лучше с» не позже момента, когда деньги выпадут из окна', () => {
+  // €100 23.5 ч назад и €30 21 ч назад, «сейчас» — только что записанная €30.
+  // Сотня выпадает через полчаса — раньше, чем 22 ч от последней покупки.
+  const now = at('2026-09-12T09:00:00.000Z');
+  const charges = [ch('2026-09-11T09:30:00.000Z', 100), ch('2026-09-12T09:00:00.000Z', 30)];
+  const better = betterAt(charges, 100, now, true)!;
+  const t30 = earliestFitting(charges, 100, now)!;
+  assert.ok(better.getTime() <= now.getTime() + PROTOCOL_GAP_H * 3600 * 1000);
+  assert.ok(better.getTime() <= t30.getTime());
+  assert.ok(better.getTime() > allowedAt(charges, 100, now, true).getTime());
 });

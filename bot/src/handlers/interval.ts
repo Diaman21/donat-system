@@ -228,6 +228,49 @@ export function slotOpensAt(
   return new Date(Math.max(t, rest));
 }
 
+// ---------------------------------------------------------------------------
+// «ЛУЧШЕ С» — ЗАПАС ДО ОПТИМУМА ПРОТОКОЛА (12.11.2026).
+//
+// Правило выше разрешает любую сумму уже с 20 ч, а протокол советует интервал
+// 22–28 ч. Между ними, когда деньги в окно не влезают (вчерашняя сотня ещё
+// в 24 часах), разрешает покупку только интервал — и запаса там нет. 12.11
+// …1884 «белый 12» умер на €30 через 20.4 ч после сотни (€130 за сутки),
+// купленной через 21 минуту после «можно».
+//
+// Опасность края 20–22 ч данные НЕ доказали (/learn, зона «20–22 ч»), поэтому
+// это не запрет, а второе время рядом с «можно с». Правило и журнал подсказок
+// (advice_log) не меняются: «можно с» по-прежнему 20 ч.
+// ---------------------------------------------------------------------------
+
+/** Начало оптимума протокола «€100 раз в сутки, интервал 22–28 ч». */
+export const PROTOCOL_GAP_H = 22;
+
+/**
+ * «Лучше с» для покупки на `amount` после покупки в `now`: если её разрешает
+ * только интервал (деньги влезают позже, чем «можно»), — раньшее из начала
+ * оптимума и момента, когда влезут деньги. null — запас не нужен: деньги
+ * влезают уже к «можно».
+ */
+export function betterAt(charges: Charge[], amount: number, now: Date, isPro: boolean): Date | null {
+  const allowed = allowedAt(charges, amount, now, isPro).getTime();
+  const byMoney = earliestFitting(charges, amount, now)?.getTime() ?? Infinity;
+  if (byMoney <= allowed) return null;
+  const t = Math.min(byMoney, now.getTime() + PROTOCOL_GAP_H * H);
+  return t > allowed ? new Date(t) : null;
+}
+
+/** «Лучше с» для слота телефона (как slotOpensAt); null — если не позже «можно». */
+export function slotBetterAt(
+  last: { at: Date; result: 'done' | 'support' | 'long' | 'verify' },
+  charges: Charge[],
+  amount: number,
+  isPro: boolean,
+): Date | null {
+  const better = betterAt(charges, amount, last.at, isPro);
+  const opens = slotOpensAt(last, charges, amount, isPro);
+  return better && better.getTime() > opens.getTime() ? better : null;
+}
+
 // «сегодня» / «завтра» / «послезавтра» / «15.09» — по московскому календарю.
 // Считаем от момента покупки, а не от «сейчас»: сообщение остаётся верным,
 // даже если его перечитают позже.
@@ -382,6 +425,14 @@ export function nextPurchaseHint(input: HintInput): string[] {
     );
   }
   lines.push(`   🟢 без ограничений с ${when(free, now)} — тогда можно и крупную`);
+  // Запас до оптимума — только когда «можно» держится на одном интервале.
+  const better = betterAt(charges, BIG_EUR, now, isPro);
+  if (better) {
+    lines.push(
+      `   👌 лучше с ${when(better, now)} — от ${PROTOCOL_GAP_H} ч, как в протоколе: ` +
+        `на ${CORRIDOR_MIN_H}–${PROTOCOL_GAP_H} ч при сумме за сутки от €${DANGER_EUR} запаса нет`,
+    );
+  }
 
   // Конец цикла. Громкий блок есть в сводке группы, но здесь он попадает
   // оператору прямо в момент работы с телефоном. Стадию решает withdrawStage —

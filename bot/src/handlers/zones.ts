@@ -1,4 +1,4 @@
-import { CORRIDOR_MIN_H, DANGER_EUR, MIN_GAP_WEAK_H } from './interval.js';
+import { CORRIDOR_MIN_H, DANGER_EUR, MIN_GAP_WEAK_H, PROTOCOL_GAP_H } from './interval.js';
 
 // Зоны за границами и правила протокола — ОДНО определение на всю систему.
 //
@@ -45,10 +45,18 @@ export const ZONES: Zone[] = [
     label: `интервал < ${MIN_GAP_WEAK_H} ч (сумма < €${DANGER_EUR})`,
     test: (a) => a.gap < MIN_GAP_WEAK_H && total(a) < DANGER_EUR,
   },
+  // До 12.11.2026 — одна зона «≥ €120 при ≥ 20 ч». Разделена после смерти
+  // …1884 (€30 поверх сотни через 20.4 ч): край 20–22 ч тонул в общем числе,
+  // а протокол советует от 22 ч — теперь его видно отдельно.
+  {
+    key: 'money-over-edge',
+    label: `сумма ≥ €${DANGER_EUR} при интервале ${CORRIDOR_MIN_H}–${PROTOCOL_GAP_H} ч`,
+    test: (a) => total(a) >= DANGER_EUR && a.gap >= CORRIDOR_MIN_H && a.gap < PROTOCOL_GAP_H,
+  },
   {
     key: 'money-over',
-    label: `сумма ≥ €${DANGER_EUR} при интервале ≥ ${CORRIDOR_MIN_H} ч`,
-    test: (a) => total(a) >= DANGER_EUR && a.gap >= CORRIDOR_MIN_H,
+    label: `сумма ≥ €${DANGER_EUR} при интервале ≥ ${PROTOCOL_GAP_H} ч`,
+    test: (a) => total(a) >= DANGER_EUR && a.gap >= PROTOCOL_GAP_H,
   },
 ];
 

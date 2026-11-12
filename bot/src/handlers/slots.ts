@@ -2,6 +2,7 @@ import type { PurchaseResultValue } from '../db/schema.js';
 import { cycleDayMsk, mskHour } from '../format.js';
 import {
   slotOpensAt,
+  slotBetterAt,
   withdrawStage,
   BIG_EUR,
   SMALL_EUR,
@@ -47,6 +48,9 @@ export interface PhoneSlot {
   /** Когда можно €100 и €30 по правилам; null — фаза не боевая. */
   bigAt: Date | null;
   smallAt: Date | null;
+  /** «Лучше с» — запас до оптимума протокола (12.11.2026); null — не нужен. */
+  bigBetterAt: Date | null;
+  smallBetterAt: Date | null;
 }
 
 /**
@@ -55,12 +59,12 @@ export interface PhoneSlot {
  */
 export function phoneSlot(p: PhoneInput, now: Date): PhoneSlot {
   if (!p.firstAt || !p.last) {
-    return { phase: 'fresh', day: null, stage: 'none', bigAt: null, smallAt: null };
+    return { phase: 'fresh', day: null, stage: 'none', bigAt: null, smallAt: null, bigBetterAt: null, smallBetterAt: null };
   }
   const day = cycleDayMsk(p.firstAt, now);
   const stage = withdrawStage(day - 1);
-  if (stage === 'due') return { phase: 'due', day, stage, bigAt: null, smallAt: null };
-  if (day <= WARMUP_DAYS) return { phase: 'warmup', day, stage, bigAt: null, smallAt: null };
+  if (stage === 'due') return { phase: 'due', day, stage, bigAt: null, smallAt: null, bigBetterAt: null, smallBetterAt: null };
+  if (day <= WARMUP_DAYS) return { phase: 'warmup', day, stage, bigAt: null, smallAt: null, bigBetterAt: null, smallBetterAt: null };
   // Покупка, после которой телефон умер, сюда не попадёт: в работе только живые.
   const last = { at: p.last.at, result: p.last.result };
   return {
@@ -69,6 +73,8 @@ export function phoneSlot(p: PhoneInput, now: Date): PhoneSlot {
     stage,
     bigAt: slotOpensAt(last, p.charges, BIG_EUR, p.isPro),
     smallAt: slotOpensAt(last, p.charges, SMALL_EUR, p.isPro),
+    bigBetterAt: slotBetterAt(last, p.charges, BIG_EUR, p.isPro),
+    smallBetterAt: slotBetterAt(last, p.charges, SMALL_EUR, p.isPro),
   };
 }
 

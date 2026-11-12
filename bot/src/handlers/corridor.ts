@@ -10,6 +10,8 @@ import type { PurchaseResultValue } from '../db/schema.js';
 import { asDeathReason } from './death.js';
 import { ZONES } from './zones.js';
 import { fmtRate } from './stats-math.js';
+import { loadActivePhones } from './slot-notify.js';
+import { phoneSlot } from './slots.js';
 
 // Значок результата. Record, а не тернарник «long ? 💀 : support ? ⚠️ : ✅» —
 // тот показал бы новый результат 🔐 verify как успешную покупку.
@@ -126,7 +128,7 @@ function buys(n: number): string {
 export async function phonesNowLines(): Promise<string[]> {
   const now = new Date();
   const live = (await db.execute(sql`
-    select ph.imei_last4 imei, ph.label,
+    select ph.id::text id, ph.imei_last4 imei, ph.label,
       coalesce((select sum(q.amount) from purchases q
         join purchase_categories cq on cq.id = q.category_id
         where q.phone_id = ph.id and q.result = 'done' and cq.code = 'game_donate'
@@ -134,6 +136,7 @@ export async function phonesNowLines(): Promise<string[]> {
       (select max(q.purchased_at) from purchases q where q.phone_id = ph.id) last_at,
       (select min(q.purchased_at) from purchases q where q.phone_id = ph.id) first_at
     from phones ph where ph.status = 'active' order by ph.connected_at`)) as unknown as {
+    id: string;
     imei: string;
     label: string | null;
     spent: number;
@@ -142,6 +145,8 @@ export async function phonesNowLines(): Promise<string[]> {
   }[];
 
   if (live.length === 0) return ['📱 Активных телефонов нет.'];
+  // «Лучше с» (12.11.2026) — то же определение, что в «☎️ Телефоны» и подсказке.
+  const slotBy = new Map((await loadActivePhones()).map((p) => [p.id, phoneSlot(p, now)]));
 
   const out = ['📱 Телефоны сейчас'];
   for (const p of live) {
@@ -155,7 +160,9 @@ export async function phonesNowLines(): Promise<string[]> {
     // Иначе рядом стояли бы «12-й день» и «день 13/14» про один телефон.
     const passed = p.first_at ? cycleDayMsk(p.first_at, now) - 1 : null;
     const dayTxt = passed != null ? `прошло ${passed} из ${WITHDRAW_DAYS} дн · ` : 'ещё не начат · ';
-    const freeTxt = free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет';
+    const better = slotBy.get(p.id)?.bigBetterAt;
+    const betterTxt = better && better > now ? ` · 👌 лучше с ${hhmmMsk(better)}` : '';
+    const freeTxt = (free && free > now ? `без ограничений с ${hhmmMsk(free)}` : 'ограничений нет') + betterTxt;
     // Три состояния, чтобы не писать «€205 из €120» и не повторять «лимит» дважды.
     const budget =
       spent >= DANGER_EUR

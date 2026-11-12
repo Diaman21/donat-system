@@ -10,6 +10,7 @@ import { asDeathReason, BY_APPLE } from './death.js';
 import { cycleDayMsk } from '../format.js';
 import { WARMUP_DAYS } from './interval.js';
 import { verifyTrend, VERIFY_SINCE, VERIFY_MIN_EUR } from './verify-trend.js';
+import { deathTrend, DEATH_BUCKET_DAYS } from './death-trend.js';
 
 // «/learn» — чему научилась система. Добавлено 07.10.2026 по итогам аудита.
 //
@@ -220,6 +221,16 @@ export async function learnLines(now: Date = new Date()): Promise<string[]> {
     `   с ${ddmm(VERIFY_SINCE)} по правилам коридора: ${vLine(clean.length, vCount(clean))}`,
     `   с ${ddmm(VERIFY_SINCE)} с нарушением: ${vLine(dirty.length, vCount(dirty))}`,
     '   Причина неизвестна — разбор случаев в docs/history.md.',
+  );
+
+  // ---------- 8. 💀 со временем (12.11.2026) ----------
+  // Ответ на «система сдвинулась?» — по отрезкам с протокола, без гипотез.
+  out.push(
+    '',
+    `8️⃣ 💀 со временем — все танковые попытки, по ${DEATH_BUCKET_DAYS} дней`,
+    ...deathTrend(all, PROTOCOL_SINCE, now).map(
+      (b) => `   ${ddmm(b.from)}–${ddmm(b.to)}: ${b.n} поп · ${b.deaths} 💀 · ${fmtRate(b.deaths, b.n)}`,
+    ),
   );
 
   out.push('', '⚖️ Границы и правила меняет человек. Широкий диапазон = данных мало, выводы рано.');

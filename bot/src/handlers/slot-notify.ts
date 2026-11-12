@@ -5,7 +5,7 @@ import { env } from '../config.js';
 import { inTopic } from '../group.js';
 import { fmtMsk } from '../format.js';
 import { parsePhoneModel, modelGroup } from './phone-model.js';
-import { BIG_EUR, WITHDRAW_DAYS } from './interval.js';
+import { BIG_EUR, PROTOCOL_GAP_H, WITHDRAW_DAYS } from './interval.js';
 import { slotsToNotify, inWorkHours, type PhoneInput } from './slots.js';
 import { teamMentions, countOpen } from './team.js';
 
@@ -109,6 +109,10 @@ export async function runSlotCheck(
     ...due.flatMap(({ phone, slot }) => [
       line,
       `📱 …${phone.imei}${phone.label ? ` «${phone.label}»` : ''} — можно с ${fmtMsk(slot.bigAt!)}`,
+      // Запас до оптимума протокола (12.11.2026): «можно» держится на одном интервале.
+      ...(slot.bigBetterAt && slot.bigBetterAt.getTime() > now.getTime()
+        ? [`   👌 лучше с ${fmtMsk(slot.bigBetterAt)} — от ${PROTOCOL_GAP_H} ч, как в протоколе`]
+        : []),
       // «прошло N из 14» — та же нумерация, что в сводке и «☎️ Телефоны».
       `   прошло ${slot.day! - 1} из ${WITHDRAW_DAYS} дн · последняя покупка ${fmtMsk(phone.last!.at)}`,
     ]),

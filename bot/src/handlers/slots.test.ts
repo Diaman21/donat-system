@@ -66,3 +66,12 @@ test('рабочие часы: с 09:00 до 24:00 МСК', () => {
   assert.equal(inWorkHours(new Date('2026-10-19T20:59:00Z')), true); // 23:59
   assert.equal(inWorkHours(new Date('2026-10-19T21:00:00Z')), false); // 00:00
 });
+
+test('phoneSlot: «лучше с» — 22 ч после сотни, у свежего окна — нет', () => {
+  const last = { at: ago(1), result: 'done' as const };
+  const s = phoneSlot(phone({ last: { id: 'x', ...last }, charges: [{ at: ago(1), amount: 100 }] }), NOW);
+  assert.equal(s.bigBetterAt?.getTime(), ago(1).getTime() + 22 * H);
+  assert.equal(s.smallBetterAt?.getTime(), ago(1).getTime() + 22 * H);
+  const fresh = phoneSlot(phone({ last: { id: 'y', ...last }, charges: [] }), NOW);
+  assert.equal(fresh.bigBetterAt, null);
+});

@@ -650,10 +650,21 @@ function slotLine(slot: PhoneSlot, now: Date): string {
     fresh: () => '🔥 Покупок ещё не было — начать разогрев €2',
     warmup: () => `🔥 Разогрев: день ${slot.day} из ${WARMUP_DAYS} · €2 раз в сутки`,
     due: () => `‼️ Прошло ${WITHDRAW_DAYS} дней — пора выводить, не покупать`,
-    battle: () =>
-      `⏳ €${BIG_EUR} — ${whenText(slot.bigAt!, now)} · €${SMALL_EUR} — ${whenText(slot.smallAt!, now)}`,
+    battle: () => {
+      const big = whenText(slot.bigAt!, now) + betterText(slot.bigBetterAt, now);
+      const small = whenText(slot.smallAt!, now) + betterText(slot.smallBetterAt, now);
+      // Обычно после сотни у обеих сумм одно время — одна запись, а не две одинаковых.
+      return big === small
+        ? `⏳ €${BIG_EUR} и €${SMALL_EUR} — ${big}`
+        : `⏳ €${BIG_EUR} — ${big} · €${SMALL_EUR} — ${small}`;
+    },
   };
   return byPhase[slot.phase]();
+}
+
+/** «, лучше с 12.11 14:22» — запас до оптимума протокола (12.11.2026), пока не наступил. */
+function betterText(t: Date | null, now: Date): string {
+  return t && t.getTime() > now.getTime() ? `, 👌 лучше с ${fmtMsk(t)}` : '';
 }
 
 // «💳 Карта» в «☎️ Телефоны» — указать карту у работающего телефона или сменить.

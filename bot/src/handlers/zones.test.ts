@@ -10,7 +10,7 @@ const a = (gap: number, spent: number, amt: number) => ({ gap, spent, amt });
 const zoneOf = (x: ReturnType<typeof a>) => ZONES.filter((z) => z.test(x)).map((z) => z.key);
 
 test('зоны не пересекаются', () => {
-  for (const gap of [0.5, 3, 9.9, 10, 13.9, 14, 19.9, 20, 30, 100])
+  for (const gap of [0.5, 3, 9.9, 10, 13.9, 14, 19.9, 20, 21.9, 22, 30, 100])
     for (const spent of [0, 30, 60, 90, 100, 105])
       for (const amt of [2, 30, 100]) {
         const z = zoneOf(a(gap, spent, amt));
@@ -24,6 +24,10 @@ test('зоны: граничные точки', () => {
   assert.deepEqual(zoneOf(a(14, 30, 30)), ['gap-14-20']);
   assert.deepEqual(zoneOf(a(20, 30, 30)), [], 'протокол соблюдён — не зона');
   assert.deepEqual(zoneOf(a(24, 100, 100)), ['money-over']);
+  assert.deepEqual(zoneOf(a(22, 100, 30)), ['money-over']);
+  // …1884 «белый 12», 12.11.2026: €30 поверх сотни через 20.4 ч — край, отдельная зона.
+  assert.deepEqual(zoneOf(a(20.4, 100, 30)), ['money-over-edge']);
+  assert.deepEqual(zoneOf(a(21.9, 100, 100)), ['money-over-edge']);
   assert.deepEqual(zoneOf(a(5, 100, 30)), [], 'опасная клетка — не зона наблюдений');
 });
 

@@ -150,8 +150,11 @@ TypeScript + grammY · Vercel Hobby (webhook, 2 крона). Роли: `customer
 5. **Правило безопасности:** можно, если **интервал ≥ 20 ч ИЛИ сумма ✅ за 24 ч < €120**,
    **И на не-Pro интервал ≥ 10 ч**. Опасная клетка (<20 ч и ≥€120) — около 40% смертей.
    2–3 тридцатки в сутки — норма; четвёртая (= €120) — смерть.
+   **«👌 лучше с» = 22 ч** (`PROTOCOL_GAP_H`, с 12.11.2026): когда «можно» держится только на
+   интервале (сумма ≥ €120), бот рядом с «можно с» (20 ч) называет начало оптимума — в подсказке,
+   «☎️ Телефоны», будильнике слотов и `/corridor`. Не запрет: правило и `advice_log` прежние.
 
-Константы — `interval.ts` (`DANGER_EUR`, `CORRIDOR_MIN_H`, `MIN_GAP_WEAK_H`, `WARMUP_DAYS`,
+Константы — `interval.ts` (`DANGER_EUR`, `CORRIDOR_MIN_H`, `PROTOCOL_GAP_H`, `MIN_GAP_WEAK_H`, `WARMUP_DAYS`,
 `WITHDRAW_DAYS`, `WARN_FROM_DAY`). Стадию вывода решает ОДНА функция `withdrawStage`
 (сводка, подсказка и аномалии). Граница €106–119 не изучена. Протокол с 13.08.2026:
 до 14-го дня доживает ~73% телефонов против ~30% до него. Полные таблицы — `/corridor`,
@@ -172,7 +175,8 @@ TypeScript + grammY · Vercel Hobby (webhook, 2 крона). Роли: `customer
   При 30 чистых наблюдениях в зоне сводка зовёт **обсудить** сдвиг; бот границу сам
   не двигает никогда.
 - **`/learn`:** правила вне выборки, зоны Pro/не-Pro, выживаемость (Каплан–Мейер),
-  интернет, ранние боевые, журнал подсказок, динамика 🔐 по неделям. Проценты — с 95%
+  интернет, ранние боевые, журнал подсказок, динамика 🔐 по неделям, 💀 по две недели
+  (`death-trend.ts`, с 12.11). Зона «≥ €120 при ≥ 20 ч» разделена на 20–22 ч и от 22 ч. Проценты — с 95%
   диапазоном (Уилсон).
 - **Журнал подсказок** `advice_log` (миграция `0016`): коды отклонений (`AnomalyCode`,
   **не переименовывать**), с какого часа можно €30/€100, версия правил.
@@ -189,7 +193,7 @@ TypeScript + grammY · Vercel Hobby (webhook, 2 крона). Роли: `customer
   тогда попадает в безопасную ветку.
 - Время и календарь МСК — **только** `format.ts` (`cycleDayMsk`: день 1 = день первой покупки).
 - Тесты — только чистая логика без `db/client.ts`/`config.ts`; страж `test-hygiene.test.ts`.
-  `npm test` (node --test + tsx), **200 тестов**; `restore.test.ts` поднимает миграции в PGlite.
+  `npm test` (node --test + tsx), **206 тестов**; `restore.test.ts` поднимает миграции в PGlite.
 - Нигде нет `select()` без проекции по `purchases` — удаление колонки не ломает деплой.
 - Блоки сводки — в одном `Promise.all` (таймаут функции = единственная тихая потеря).
 - Vercel: импорты с `.js`, `vercel.json` формата `functions`, Node закреплён `engines: 24.x`,
@@ -224,7 +228,7 @@ donat-system/
                             zones · learn · stats-math · corridor · weekly · stats · vk ·
                             report · history · recent · postmortem · export · backup ·
                             death · money · idem · phone-dup · phone-model · card · card-calc ·
-                            verify-trend · slots · slot-notify · period · period-calc ·
+                            verify-trend · death-trend · slots · slot-notify · period · period-calc ·
                             card4 · accounts · accounts-calc · reports · menus · help
 ```
 > ⚠️ `AGENTS.md` не править руками — после правки `CLAUDE.md` пересобрать (команда — в
